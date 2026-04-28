@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build And Publish
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Release Tag
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+(\.[0-9]+){2}([.-][A-Za-z0-9]+)*$ ]]; then
+            echo "Release tags must look like v0.1.0 or v0.1.0-beta.1." >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          dmg_path="$PWD/build/miniMark-$version.dmg"
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "dmg_path=$dmg_path"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Packages
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project miniMark.xcodeproj \
+            -scheme miniMark
+
+      - name: Validate Developer Info
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ vars.DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          missing=0
+
+          for name in \
+            DEVELOPER_ID_APPLICATION \
+            APPLE_TEAM_ID \
+            DEVELOPER_ID_CERTIFICATE_BASE64 \
+            DEVELOPER_ID_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is not configured in this repository's Actions variables/secrets."
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Import Developer ID Certificate
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$DEVELOPER_ID_CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+
+      - name: Test
+        run: |
+          xcodebuild \
+            -project miniMark.xcodeproj \
+            -scheme miniMark \
+            -destination "platform=macOS" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE="Manual" \
+            test
+
+      - name: Build DMG
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          OUTPUT: ${{ steps.release.outputs.dmg_path }}
+          CODE_SIGN_IDENTITY: ${{ vars.DEVELOPER_ID_APPLICATION }}
+          DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          SIGN_DMG: "1"
+        run: ./scripts/build_dmg.sh
+
+      - name: Notarize And Staple DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          DMG_PATH: ${{ steps.release.outputs.dmg_path }}
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG_PATH"
+          spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+          DMG_PATH: ${{ steps.release.outputs.dmg_path }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "$DMG_PATH" --clobber
+          else
+            gh release create "$TAG_NAME" "$DMG_PATH" \
+              --title "miniMark $VERSION" \
+              --generate-notes \
+              --latest
+          fi
