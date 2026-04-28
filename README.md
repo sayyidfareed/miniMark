@@ -192,4 +192,5 @@ Good contributions should preserve the plain-file workflow, avoid lock-in, and m
 
 ## License
 
-MiniMark is released under the MIT License. See [LICENSE](LICENSE).
+MiniMark is released under the MIT License with the Commons Clause License
+Condition v1.0. See [LICENSE](LICENSE).
