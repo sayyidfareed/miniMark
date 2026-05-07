@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 MiniMark contributors
+Copyright (c) 2026 miniMark contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,13 @@ derives, entirely or substantially, from the functionality of the Software. Any
 license notice or attribution required by the License must also include this
 Commons Clause License Condition notice.
 
-Software: MiniMark
+Software: miniMark
 License: MIT License
-Licensor: MiniMark contributors
+Licensor: miniMark contributors
+
+Commercial Distribution By Licensor
+
+The Commons Clause condition above limits rights granted to recipients of this
+public source license. It does not limit the miniMark copyright owner or
+authorized licensor from distributing miniMark commercially, including as a
+paid, one-time-purchase Mac App Store app.

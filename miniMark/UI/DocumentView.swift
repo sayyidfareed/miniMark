@@ -19,16 +19,23 @@ struct DocumentView: View {
 
   @Binding var document: MarkdownDocument
   let fileURL: URL?
+  let exportCoordinator: MarkdownExportCoordinator
 
   @AppStorage(Self.defaultModeKey) private var defaultModeRaw = Mode.source.rawValue
   @State private var mode: Mode
   @State private var selection = TextSelection.zero
   @State private var previewMarkdown = ""
   @State private var previewTask: Task<Void, Never>?
+  @State private var windowFileURL: URL?
 
-  init(document: Binding<MarkdownDocument>, fileURL: URL?) {
+  init(
+    document: Binding<MarkdownDocument>,
+    fileURL: URL?,
+    exportCoordinator: MarkdownExportCoordinator
+  ) {
     self._document = document
     self.fileURL = fileURL
+    self.exportCoordinator = exportCoordinator
 
     let savedMode = UserDefaults.standard.string(forKey: Self.defaultModeKey)
       .flatMap(Mode.init(rawValue:)) ?? .source
@@ -43,6 +50,14 @@ struct DocumentView: View {
     Mode(rawValue: defaultModeRaw) ?? .source
   }
 
+  private var effectiveFileURL: URL? {
+    fileURL ?? windowFileURL
+  }
+
+  private var exportContext: MarkdownExportContext {
+    MarkdownExportContext(markdown: document.text, fileURL: effectiveFileURL)
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       topBar
@@ -54,7 +69,7 @@ struct DocumentView: View {
           MarkdownSourceEditor(text: $document.text, selection: $selection)
             .transition(.opacity)
         case .preview:
-          MarkdownPreview(markdown: previewMarkdown, fileURL: fileURL)
+          MarkdownPreview(markdown: previewMarkdown, fileURL: effectiveFileURL)
             .transition(.opacity)
         }
       }
@@ -71,17 +86,37 @@ struct DocumentView: View {
       .opacity(0)
       .frame(width: 0, height: 0)
       .accessibilityHidden(true)
+
+      MarkdownExportCommandBridge(
+        context: exportContext,
+        coordinator: exportCoordinator,
+        windowFileURL: $windowFileURL
+      )
+      .frame(width: 0, height: 0)
+      .accessibilityHidden(true)
     }
     .animation(.easeInOut(duration: 0.18), value: mode)
     .onAppear {
       previewMarkdown = document.text
+      exportCoordinator.updateCurrentContext(exportContext)
     }
     .onChange(of: document.text) { _, newValue in
       schedulePreviewUpdate(for: newValue)
+      exportCoordinator.updateCurrentContext(
+        MarkdownExportContext(markdown: newValue, fileURL: effectiveFileURL)
+      )
+    }
+    .onChange(of: windowFileURL) {
+      exportCoordinator.updateCurrentContext(exportContext)
     }
     .onDisappear {
       previewTask?.cancel()
+      exportCoordinator.updateCurrentContext(nil)
     }
+    .focusedValue(
+      \.markdownExportContext,
+      exportContext
+    )
   }
 
   private var topBar: some View {

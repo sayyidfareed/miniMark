@@ -13,6 +13,14 @@ It opens real Markdown files, edits them as plain text, previews them beautifull
 | ![Source mode](miniMark/Resources/screenshot_source.png) | ![Preview mode](miniMark/Resources/screenshot_preview.png) |
 | Syntax-aware editing in a crisp monospaced source view. | Live preview with code highlighting and copy buttons. |
 
+## Get miniMark
+
+- **[Mac App Store — $2.99](https://apps.apple.com/app/idTBD)** — auto-updates, signed, no Gatekeeper friction. Recommended for most people.
+- **[GitHub Releases — free DMG](https://github.com/sayyidfareed/miniMark/releases)** — same app, manual updates. For folks who'd rather vet what they install.
+- **Build from source** — see [Build](#build) below.
+
+Source is MIT (with Commons Clause) either way. The App Store version pays for convenience and supports continued development.
+
 ## Why It Exists
 
 Markdown is supposed to feel light.
@@ -37,9 +45,10 @@ No account. No workspace lock-in. No mystery format.
 - **Code block highlighting** powered by Highlightr
 - **Copy button on preview code blocks**
 - **Formatting toolbar** for bold, italic, links, headings, lists, quotes, inline code, and code blocks
-- **Live document stats** for words, characters, line, and column
+- **Export** to TXT, RTF, and HTML, plus Print / Save as PDF through the standard macOS print sheet
+- **Live document stats** for words, characters, reading time, line, and column
 - **Relative image/link support** in preview based on the opened file location
-- **Release DMG script** for local packaging
+- **Remembered default mode** so documents open in your preferred Source or Preview view
 
 ## The Vibe
 
@@ -160,9 +169,10 @@ miniMark/
   App/          App entry point and AppKit delegate
   Document/     Markdown file types and file document model
   Editor/       NSTextView-backed source editor and syntax styling
+  Export/       TXT, RTF, HTML, and Print / PDF export
   Formatting/   Markdown formatting commands
   Preview/      MarkdownUI preview and Highlightr integration
-  Stats/        Word, character, line, and column stats
+  Stats/        Word, character, reading time, line, and column stats
   UI/           Main document view and formatting toolbar
 
 miniMarkTests/  Unit tests
@@ -175,22 +185,18 @@ miniMark uses an `NSTextView` inside SwiftUI for the editor because Markdown edi
 
 Preview rendering is debounced so typing stays responsive while the rendered view still catches up quickly. Code highlighting is normalized for common language aliases like `js`, `ts`, `sh`, `objc`, and `c++`.
 
-## Roadmap Ideas
-
-- Export preview to HTML or PDF
-- Toggleable side-by-side editor and preview
-- Theme picker for source and preview
-- Markdown table helper
-- Front matter awareness
-- Word goal / reading time
-
 ## Contributing
 
-Keep MiniMark small, fast, and honest.
+Keep miniMark small, fast, and honest.
 
 Good contributions should preserve the plain-file workflow, avoid lock-in, and make writing Markdown feel calmer. Focused fixes and thoughtful little features are very welcome.
 
 ## License
 
-MiniMark is released under the MIT License with the Commons Clause License
+miniMark is released under the MIT License with the Commons Clause License
 Condition v1.0. See [LICENSE](LICENSE).
+
+The Commons Clause limits downstream selling of miniMark by other parties. It
+does not grant third parties the right to sell the app. The miniMark copyright
+owner/licensor can still choose to distribute miniMark commercially, including
+as the paid Mac App Store app described above.

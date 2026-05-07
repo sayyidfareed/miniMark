@@ -213,7 +213,7 @@ func draw(size: Int) -> NSBitmapImageRep {
     cg.restoreGState()
   }
 
-  // Tiny accent dot — the "mini mark" — placed after the lowercase m to subtly
+  // Tiny accent dot for miniMark, placed after the lowercase m to subtly
   // echo the brand name. Acts like a punctuation period at the baseline.
   if size >= 48 {
     let bbox = mark.bounds

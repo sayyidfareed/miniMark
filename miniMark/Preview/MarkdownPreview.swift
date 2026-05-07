@@ -8,25 +8,57 @@ struct MarkdownPreview: View {
   let fileURL: URL?
 
   var body: some View {
-    MarkdownWebPreview(markdown: markdown, baseURL: baseURL)
+    MarkdownWebPreview(markdown: markdown, documentURL: fileURL, baseURL: baseURL)
       .background(Color(nsColor: .textBackgroundColor))
   }
 
   private var baseURL: URL? {
-    fileURL?.deletingLastPathComponent()
+    fileURL.map { URL(fileURLWithPath: $0.deletingLastPathComponent().path, isDirectory: true) }
   }
 }
 
 struct MarkdownPreviewHTMLRenderer {
+  enum RenderMode {
+    case preview
+    case export
+    case print
+    case richText
+
+    var isPreview: Bool {
+      self == .preview
+    }
+
+    var rendersMermaid: Bool {
+      self == .preview || self == .export
+    }
+
+    var isRichText: Bool {
+      self == .richText
+    }
+  }
+
   private enum TableAlignment {
     case left
     case center
     case right
   }
 
-  static func htmlDocument(for markdown: String, baseURL: URL?) -> String {
-    let body = renderBodyHTML(for: markdown, baseURL: baseURL)
+  static func htmlDocument(
+    for markdown: String,
+    baseURL: URL?,
+    mode: RenderMode = .preview
+  ) -> String {
+    let baseURL = baseURL.map { URL(fileURLWithPath: $0.path, isDirectory: true) }
+    let body = renderBodyHTML(for: markdown, baseURL: baseURL, mode: mode)
     let baseElement = baseURL.map { #"<base href="\#($0.absoluteString)">"# } ?? ""
+    let bodyClass = mode.isPreview ? "" : #" class="export-document""#
+    let exportStyles = mode.isPreview ? "" : (mode.isRichText ? richTextDocumentStyles : exportDocumentStyles)
+    let script = [
+      mode.isPreview ? copyButtonScript : "",
+      mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : ""
+    ]
+    .filter { !$0.isEmpty }
+    .joined(separator: "\n")
 
     return """
     <!doctype html>
@@ -44,6 +76,9 @@ struct MarkdownPreviewHTMLRenderer {
           --code-bg: #f5f5f5;
           --page-bg: #ffffff;
           --link: #0969da;
+          --preview-font-size: clamp(16px, calc(14.2px + 0.22vw), 20px);
+          --preview-content-width: clamp(720px, 70vw, 62em);
+          --preview-inline-padding: clamp(18px, 2.2vw, 36px);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -63,7 +98,7 @@ struct MarkdownPreviewHTMLRenderer {
           margin: 0;
           background: var(--page-bg);
           color: var(--text);
-          font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+          font: var(--preview-font-size)/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
         }
 
         body {
@@ -75,9 +110,9 @@ struct MarkdownPreviewHTMLRenderer {
 
         .content {
           box-sizing: border-box;
-          max-width: 780px;
+          width: min(100%, var(--preview-content-width));
           margin: 0 auto;
-          padding: 8px 18px 20px;
+          padding: 8px var(--preview-inline-padding) 20px;
         }
 
         .content > *:first-child {
@@ -282,6 +317,19 @@ struct MarkdownPreviewHTMLRenderer {
           background: transparent;
         }
 
+        pre.mermaid {
+          overflow-x: auto;
+          padding: 12px 0;
+          border-radius: 0;
+          background: transparent;
+          text-align: center;
+        }
+
+        .mermaid svg {
+          max-width: 100%;
+          height: auto;
+        }
+
         blockquote {
           padding-left: 1em;
           color: var(--muted);
@@ -290,6 +338,8 @@ struct MarkdownPreviewHTMLRenderer {
 
         table {
           width: 100%;
+          max-width: 100%;
+          table-layout: fixed;
           border-collapse: collapse;
         }
 
@@ -297,17 +347,209 @@ struct MarkdownPreviewHTMLRenderer {
         td {
           padding: 6px 13px;
           border: 1px solid var(--border);
+          box-sizing: border-box;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          vertical-align: top;
         }
 
         th {
           font-weight: 650;
         }
+
+        \(exportStyles)
       </style>
     </head>
-    <body>
+    <body\(bodyClass)>
       <main class="content">
         \(body)
       </main>
+      \(script)
+    </body>
+    </html>
+    """
+  }
+
+  private static let exportDocumentStyles = """
+        .export-document {
+          --text: #111111;
+          --muted: #646464;
+          --border: #d8d8d8;
+          --code-bg: #f5f5f5;
+          --page-bg: #ffffff;
+          --link: #0757b8;
+          background: #ffffff;
+          color: #111111;
+          font-size: 15px;
+          line-height: 1.48;
+        }
+
+        .export-document .content {
+          max-width: 760px;
+          padding: 42px 48px 54px;
+        }
+
+        .export-document h1,
+        .export-document h2,
+        .export-document h3,
+        .export-document h4,
+        .export-document h5,
+        .export-document h6 {
+          margin: 20px 0 9px;
+        }
+
+        .export-document h1 { font-size: 2em; }
+        .export-document h2 { font-size: 1.46em; }
+        .export-document h3 { font-size: 1.22em; }
+
+        .export-document p,
+        .export-document ul,
+        .export-document ol,
+        .export-document blockquote,
+        .export-document pre,
+        .export-document table {
+          margin-bottom: 12px;
+        }
+
+        .export-document ul,
+        .export-document ol {
+          padding-left: 1.45em;
+        }
+
+        .export-document li + li {
+          margin-top: 4px;
+        }
+
+        .export-document a {
+          color: #0757b8;
+        }
+
+        .export-document .codeblock-header {
+          background: rgba(0, 0, 0, 0.025);
+        }
+
+        .export-document pre {
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+
+        .export-document th,
+        .export-document td {
+          padding: 7px 10px;
+          line-height: 1.34;
+        }
+
+        @media print {
+          @page {
+            margin: 0.72in;
+          }
+
+          html,
+          body {
+            background: #ffffff;
+            color: #111111;
+          }
+
+          .export-document .content {
+            max-width: none;
+            padding: 0;
+          }
+
+          a {
+            color: #111111;
+          }
+
+          h1,
+          h2,
+          h3,
+          h4,
+          h5,
+          h6,
+          blockquote,
+          pre,
+          table {
+            break-inside: avoid;
+          }
+
+          pre,
+          code {
+            background: #f4f4f4;
+          }
+        }
+  """
+
+  private static let richTextDocumentStyles = """
+        .export-document {
+          --text: #111111;
+          --muted: #646464;
+          --border: #cfcfcf;
+          --code-bg: #f5f5f5;
+          --page-bg: #ffffff;
+          --link: #0757b8;
+          background: #ffffff;
+          color: #111111;
+          font-size: 13px;
+          line-height: 1.38;
+        }
+
+        .export-document .content {
+          width: 6.45in;
+          max-width: 6.45in;
+          margin: 0;
+          padding: 0;
+        }
+
+        .export-document h1,
+        .export-document h2,
+        .export-document h3,
+        .export-document h4,
+        .export-document h5,
+        .export-document h6 {
+          margin: 13px 0 6px;
+          line-height: 1.18;
+        }
+
+        .export-document h1 { font-size: 1.75em; }
+        .export-document h2 { font-size: 1.38em; }
+        .export-document h3 { font-size: 1.13em; }
+
+        .export-document p,
+        .export-document ul,
+        .export-document ol,
+        .export-document blockquote,
+        .export-document pre,
+        .export-document table {
+          margin-top: 0;
+          margin-bottom: 8px;
+        }
+
+        .export-document ul,
+        .export-document ol {
+          padding-left: 1.25em;
+        }
+
+        .export-document table {
+          width: 6.45in;
+          max-width: 6.45in;
+          table-layout: fixed;
+        }
+
+        .export-document th,
+        .export-document td {
+          padding: 4px 6px;
+          font-size: 0.92em;
+          line-height: 1.24;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .export-document pre {
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+  """
+
+  private static let copyButtonScript = """
       <script>
         (function () {
           document.addEventListener('click', function (event) {
@@ -358,12 +600,48 @@ struct MarkdownPreviewHTMLRenderer {
           }
         })();
       </script>
-    </body>
-    </html>
+  """
+
+  private static var mermaidScript: String {
+    guard let source = mermaidTinySource else { return "" }
+
+    return """
+      <script>
+        \(source)
+        (function () {
+          if (!window.mermaid) return;
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict'
+          });
+          mermaid.run({
+            querySelector: '.mermaid',
+            suppressErrors: true
+          });
+        })();
+      </script>
     """
   }
 
-  private static func renderBodyHTML(for markdown: String, baseURL: URL?) -> String {
+  private static let mermaidTinySource: String? = {
+    let url = Bundle.main.url(
+      forResource: "mermaid-tiny.min",
+      withExtension: "js",
+      subdirectory: "Mermaid"
+    ) ?? Bundle.main.url(forResource: "mermaid-tiny.min", withExtension: "js")
+
+    guard let url else {
+      return nil
+    }
+
+    return try? String(contentsOf: url, encoding: .utf8)
+  }()
+
+  private static func renderBodyHTML(
+    for markdown: String,
+    baseURL: URL?,
+    mode: RenderMode
+  ) -> String {
     let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n")
       .replacingOccurrences(of: "\r", with: "\n")
       .components(separatedBy: "\n")
@@ -382,7 +660,9 @@ struct MarkdownPreviewHTMLRenderer {
 
     func flushParagraph() {
       guard !paragraph.isEmpty else { return }
-      output.append("<p>\(renderInline(paragraph.joined(separator: " "), baseURL: baseURL))</p>")
+      output.append(
+        "<p>\(renderInline(paragraph.joined(separator: " "), baseURL: baseURL, mode: mode))</p>"
+      )
       paragraph.removeAll()
     }
 
@@ -392,7 +672,7 @@ struct MarkdownPreviewHTMLRenderer {
 
       if var fence = codeFence {
         if trimmed.hasPrefix("```") {
-          output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n")))
+          output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n"), mode: mode))
           codeFence = nil
         } else {
           fence.lines.append(line)
@@ -422,12 +702,12 @@ struct MarkdownPreviewHTMLRenderer {
         flushParagraph()
         closeList()
         let rawBlock = collectRawHTMLBlock(from: lines, startingAt: index)
-        output.append(rawBlock.html)
+        output.append(renderRawHTML(rawBlock.html, baseURL: baseURL, mode: mode))
         index = rawBlock.nextIndex
         continue
       }
 
-      if let table = markdownTable(from: lines, startingAt: index, baseURL: baseURL) {
+      if let table = markdownTable(from: lines, startingAt: index, baseURL: baseURL, mode: mode) {
         flushParagraph()
         closeList()
         output.append(table.html)
@@ -438,7 +718,7 @@ struct MarkdownPreviewHTMLRenderer {
       if let heading = markdownHeading(from: trimmed) {
         flushParagraph()
         closeList()
-        output.append("<h\(heading.level)>\(renderInline(heading.text, baseURL: baseURL))</h\(heading.level)>")
+        output.append("<h\(heading.level)>\(renderInline(heading.text, baseURL: baseURL, mode: mode))</h\(heading.level)>")
         index += 1
         continue
       }
@@ -450,7 +730,7 @@ struct MarkdownPreviewHTMLRenderer {
           listKind = "ul"
           output.append("<ul>")
         }
-        output.append("<li>\(renderInline(item, baseURL: baseURL))</li>")
+        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode))</li>")
         index += 1
         continue
       }
@@ -462,7 +742,7 @@ struct MarkdownPreviewHTMLRenderer {
           listKind = "ol"
           output.append("<ol>")
         }
-        output.append("<li>\(renderInline(item, baseURL: baseURL))</li>")
+        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode))</li>")
         index += 1
         continue
       }
@@ -471,7 +751,7 @@ struct MarkdownPreviewHTMLRenderer {
         flushParagraph()
         closeList()
         let quote = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        output.append("<blockquote><p>\(renderInline(String(quote), baseURL: baseURL))</p></blockquote>")
+        output.append("<blockquote><p>\(renderInline(String(quote), baseURL: baseURL, mode: mode))</p></blockquote>")
         index += 1
         continue
       }
@@ -482,7 +762,7 @@ struct MarkdownPreviewHTMLRenderer {
     }
 
     if let fence = codeFence {
-      output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n")))
+      output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n"), mode: mode))
     }
     flushParagraph()
     closeList()
@@ -490,27 +770,68 @@ struct MarkdownPreviewHTMLRenderer {
     return output.joined(separator: "\n")
   }
 
-  private static func renderCodeBlock(language: String, content: String) -> String {
+  private static func renderCodeBlock(language: String, content: String, mode: RenderMode) -> String {
     let trimmedLanguage = language.trimmingCharacters(in: .whitespacesAndNewlines)
+    if mode.rendersMermaid && isMermaidLanguage(trimmedLanguage) {
+      return #"<pre class="mermaid">\#(escapeHTML(content))</pre>"#
+    }
+
     let label = trimmedLanguage.isEmpty ? "plain text" : trimmedLanguage
     let languageClass = trimmedLanguage.isEmpty ? "" : #" class="language-\#(escapeHTMLAttribute(trimmedLanguage))""#
     let body = escapeHTML(content)
+    let copyButton = mode.isPreview
+      ? #"<button type="button" class="codeblock-copy" aria-label="Copy code" title="Copy code"></button>"#
+      : ""
+    let header = mode.isPreview || !trimmedLanguage.isEmpty
+      ? """
+        <div class="codeblock-header">
+          <span class="codeblock-lang">\(escapeHTML(label))</span>
+          \(copyButton)
+        </div>
+      """
+      : ""
 
     return """
     <div class="codeblock">
-      <div class="codeblock-header">
-        <span class="codeblock-lang">\(escapeHTML(label))</span>
-        <button type="button" class="codeblock-copy" aria-label="Copy code" title="Copy code"></button>
-      </div>
+      \(header)
       <pre><code\(languageClass)>\(body)</code></pre>
     </div>
     """
   }
 
+  private static func containsMermaidFence(in markdown: String) -> Bool {
+    let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+      .components(separatedBy: "\n")
+
+    var isInFence = false
+    for line in lines {
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard trimmed.hasPrefix("```") else { continue }
+
+      if isInFence {
+        isInFence = false
+      } else {
+        let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if isMermaidLanguage(language) {
+          return true
+        }
+        isInFence = true
+      }
+    }
+
+    return false
+  }
+
+  private static func isMermaidLanguage(_ language: String) -> Bool {
+    language.compare("mermaid", options: [.caseInsensitive]) == .orderedSame
+  }
+
   private static func markdownTable(
     from lines: [String],
     startingAt index: Int,
-    baseURL: URL?
+    baseURL: URL?,
+    mode: RenderMode
   ) -> (html: String, nextIndex: Int)? {
     guard
       index + 1 < lines.count,
@@ -531,14 +852,14 @@ struct MarkdownPreviewHTMLRenderer {
 
     let headerHTML = zip(headers, alignments)
       .map { cell, alignment in
-        "<th\(tableAlignmentAttribute(alignment))>\(renderInline(cell, baseURL: baseURL))</th>"
+        "<th\(tableCellStyleAttribute(alignment, columnCount: headers.count))>\(renderInline(cell, baseURL: baseURL, mode: mode, imageWidth: tableImageWidth(for: mode)))</th>"
       }
       .joined()
 
     let bodyHTML = rows.map { row in
       let cells = zip(row, alignments)
         .map { cell, alignment in
-          "<td\(tableAlignmentAttribute(alignment))>\(renderInline(cell, baseURL: baseURL))</td>"
+          "<td\(tableCellStyleAttribute(alignment, columnCount: headers.count))>\(renderInline(cell, baseURL: baseURL, mode: mode, imageWidth: tableImageWidth(for: mode)))</td>"
         }
         .joined()
       return "<tr>\(cells)</tr>"
@@ -549,7 +870,7 @@ struct MarkdownPreviewHTMLRenderer {
 
     return (
       """
-      <table>
+      <table width="100%" style="width: 100%; max-width: 100%; table-layout: fixed;">
       <thead>
       <tr>\(headerHTML)</tr>
       </thead>\(body)
@@ -606,15 +927,23 @@ struct MarkdownPreviewHTMLRenderer {
     return cells + Array(repeating: "", count: count - cells.count)
   }
 
-  private static func tableAlignmentAttribute(_ alignment: TableAlignment) -> String {
+  private static func tableCellStyleAttribute(_ alignment: TableAlignment, columnCount: Int) -> String {
+    let width = columnCount > 0 ? 100.0 / Double(columnCount) : 100.0
+    let textAlignment: String
     switch alignment {
     case .left:
-      return ""
+      textAlignment = "left"
     case .center:
-      return #" style="text-align: center""#
+      textAlignment = "center"
     case .right:
-      return #" style="text-align: right""#
+      textAlignment = "right"
     }
+
+    return #" style="text-align: \#(textAlignment); width: \#(String(format: "%.4g", width))%; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;""#
+  }
+
+  private static func tableImageWidth(for mode: RenderMode) -> Int? {
+    mode.isRichText ? 220 : nil
   }
 
   private static func isRawHTMLBlockStart(_ trimmed: String) -> Bool {
@@ -676,6 +1005,47 @@ struct MarkdownPreviewHTMLRenderer {
     return (block.joined(separator: "\n"), nextIndex)
   }
 
+  private static func renderRawHTML(_ html: String, baseURL: URL?, mode: RenderMode) -> String {
+    replacingMatches(in: html, pattern: #"<img\b[^>]*\bsrc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)[^>]*>"#) { match in
+      guard let tagRange = Range(match.range, in: html) else { return "" }
+      var tag = String(html[tagRange])
+      guard
+        let source = match.capture(1, in: html),
+        let rewrittenSource = previewImageSource(
+          for: unquotedHTMLAttributeValue(source),
+          baseURL: baseURL
+        )
+      else {
+        return tag
+      }
+
+      let quote: Character? = source.first == "\"" || source.first == "'" ? source.first : nil
+      let escapedSource = escapeHTMLAttribute(rewrittenSource)
+      let replacement = quote.map { "\($0)\(escapedSource)\($0)" } ?? escapedSource
+      tag = tag.replacingOccurrences(of: source, with: replacement)
+
+      if !tag.lowercased().contains("style=") {
+        let sizeAttributes = imageAttributes(for: mode, width: nil)
+        tag = String(tag.dropLast()) + sizeAttributes + ">"
+      }
+
+      return tag
+    }
+  }
+
+  private static func unquotedHTMLAttributeValue(_ source: String) -> String {
+    guard
+      source.count >= 2,
+      let first = source.first,
+      let last = source.last,
+      (first == "\"" && last == "\"") || (first == "'" && last == "'")
+    else {
+      return source
+    }
+
+    return String(source.dropFirst().dropLast())
+  }
+
   private static func markdownHeading(from trimmed: String) -> (level: Int, text: String)? {
     let match = firstMatch(in: trimmed, pattern: #"^(#{1,6})\s+(.+)$"#)
     guard
@@ -699,7 +1069,12 @@ struct MarkdownPreviewHTMLRenderer {
     return String(trimmed[range])
   }
 
-  private static func renderInline(_ markdown: String, baseURL: URL?) -> String {
+  private static func renderInline(
+    _ markdown: String,
+    baseURL: URL?,
+    mode: RenderMode,
+    imageWidth: Int? = nil
+  ) -> String {
     var html = escapeHTML(markdown)
 
     html = replacingMatches(in: html, pattern: #"`([^`]+)`"#) { match in
@@ -709,7 +1084,8 @@ struct MarkdownPreviewHTMLRenderer {
       let alt = match.capture(1, in: html) ?? ""
       let source = match.capture(2, in: html) ?? ""
       let previewSource = previewImageSource(for: source, baseURL: baseURL) ?? source
-      return #"<img src="\#(escapeHTMLAttribute(previewSource))" alt="\#(escapeHTMLAttribute(alt))">"#
+      let sizeAttributes = imageAttributes(for: mode, width: imageWidth)
+      return #"<img src="\#(escapeHTMLAttribute(previewSource))" alt="\#(escapeHTMLAttribute(alt))"\#(sizeAttributes)>"#
     }
     html = replacingMatches(in: html, pattern: #"\[([^\]]+)\]\(([^)]+)\)"#) { match in
       let label = match.capture(1, in: html) ?? ""
@@ -738,18 +1114,65 @@ struct MarkdownPreviewHTMLRenderer {
       .replacingOccurrences(of: "\"", with: "&quot;")
   }
 
+  private static func imageAttributes(for mode: RenderMode, width: Int?) -> String {
+    if mode.isRichText, let width {
+      return #" width="\#(width)" style="max-width: \#(width)px; height: auto;""#
+    }
+
+    return #" style="max-width: 100%; height: auto;""#
+  }
+
+  static func localImageURLs(for markdown: String, baseURL: URL?) -> [URL] {
+    guard let baseURL, baseURL.isFileURL else { return [] }
+
+    var urls: [URL] = []
+    var seenPaths = Set<String>()
+
+    func appendImageURL(for source: String) {
+      guard let fileURL = localImageURL(for: unescapeHTMLAttribute(source), baseURL: baseURL) else {
+        return
+      }
+
+      if seenPaths.insert(fileURL.path).inserted {
+        urls.append(fileURL)
+      }
+    }
+
+    let markdownImageRegex = regularExpression(for: #"!\[[^\]]*\]\(([^)]+)\)"#)
+    for match in markdownImageRegex.matches(in: markdown, range: NSRange(markdown.startIndex..., in: markdown)) {
+      guard let source = match.capture(1, in: markdown) else { continue }
+      appendImageURL(for: source)
+    }
+
+    let rawHTMLImageRegex = regularExpression(for: #"<img\b[^>]*\bsrc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)[^>]*>"#)
+    for match in rawHTMLImageRegex.matches(in: markdown, range: NSRange(markdown.startIndex..., in: markdown)) {
+      guard let source = match.capture(1, in: markdown) else { continue }
+      appendImageURL(for: unquotedHTMLAttributeValue(source))
+    }
+
+    return urls
+  }
+
   private static func previewImageSource(for source: String, baseURL: URL?) -> String? {
     guard
       let baseURL,
       baseURL.isFileURL,
       let fileURL = localImageURL(for: unescapeHTMLAttribute(source), baseURL: baseURL),
       let mimeType = imageMIMEType(for: fileURL.pathExtension),
-      let data = try? Data(contentsOf: fileURL)
+      let data = localImageData(for: fileURL)
     else {
       return nil
     }
 
     return "data:\(mimeType);base64,\(data.base64EncodedString())"
+  }
+
+  private static func localImageData(for fileURL: URL) -> Data? {
+    if let data = MarkdownFolderAccessStore.shared.data(for: fileURL) {
+      return data
+    }
+
+    return try? Data(contentsOf: fileURL)
   }
 
   private static func localImageURL(for source: String, baseURL: URL) -> URL? {
@@ -775,10 +1198,7 @@ struct MarkdownPreviewHTMLRenderer {
       .resolvingSymlinksInPath()
     let rootPath = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
 
-    guard
-      fileURL.path.hasPrefix(rootPath),
-      FileManager.default.fileExists(atPath: fileURL.path)
-    else {
+    guard fileURL.path.hasPrefix(rootPath) else {
       return nil
     }
 
@@ -869,6 +1289,7 @@ private extension NSTextCheckingResult {
 
 private struct MarkdownWebPreview: NSViewRepresentable {
   let markdown: String
+  let documentURL: URL?
   let baseURL: URL?
 
   func makeCoordinator() -> Coordinator {
@@ -893,6 +1314,8 @@ private struct MarkdownWebPreview: NSViewRepresentable {
   }
 
   private func loadPreview(in webView: WKWebView, coordinator: Coordinator) {
+    requestFolderAccessIfNeeded(in: webView, coordinator: coordinator)
+
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: baseURL)
     guard html != coordinator.currentHTML else { return }
 
@@ -900,9 +1323,54 @@ private struct MarkdownWebPreview: NSViewRepresentable {
     webView.loadHTMLString(html, baseURL: baseURL)
   }
 
+  private func requestFolderAccessIfNeeded(in webView: WKWebView, coordinator: Coordinator) {
+    guard let documentURL, let baseURL else { return }
+
+    let folderPath = documentURL.deletingLastPathComponent()
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+      .path
+    if coordinator.accessibleFolderPaths.contains(folderPath) { return }
+
+    let imageURLs = MarkdownPreviewHTMLRenderer.localImageURLs(for: markdown, baseURL: baseURL)
+    let inaccessibleImageURLs = MarkdownFolderAccessStore.shared.imageURLsNeedingFolderAccess(imageURLs)
+    if inaccessibleImageURLs.isEmpty {
+      coordinator.accessibleFolderPaths.insert(folderPath)
+      return
+    }
+
+    guard coordinator.requestedFolderAccessPaths.insert(folderPath).inserted else { return }
+
+    coordinator.folderAccessTask?.cancel()
+    coordinator.folderAccessTask = Task { @MainActor [weak webView, weak coordinator] in
+      guard let webView, let coordinator, !Task.isCancelled else { return }
+
+      let didGrantAccess = await MarkdownFolderAccessStore.shared.requestAccess(
+        toFolderContaining: inaccessibleImageURLs,
+        documentURL: documentURL,
+        window: webView.window ?? NSApp.keyWindow
+      )
+      guard !Task.isCancelled else { return }
+
+      coordinator.folderAccessTask = nil
+      if didGrantAccess {
+        coordinator.accessibleFolderPaths.insert(folderPath)
+        coordinator.currentHTML = ""
+        loadPreview(in: webView, coordinator: coordinator)
+      }
+    }
+  }
+
   final class Coordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
     var currentHTML = ""
+    var folderAccessTask: Task<Void, Never>?
+    var requestedFolderAccessPaths = Set<String>()
+    var accessibleFolderPaths = Set<String>()
+
+    deinit {
+      folderAccessTask?.cancel()
+    }
 
     func webView(
       _ webView: WKWebView,

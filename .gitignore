@@ -1,6 +1,8 @@
 .DS_Store
 *.xcuserstate
 xcuserdata/
+.claude/
+~$*
 
 build/
 DerivedData/
@@ -8,4 +10,9 @@ DerivedData/
 *.dSYM
 *.xcarchive
 *.xcresult
+
+# App Store distribution (private to the copyright holder)
+scripts/build_app_store_archive.sh
+scripts/validate_app_store_ready.sh
+scripts/ExportOptions-AppStore.plist
 
