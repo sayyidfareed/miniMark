@@ -15,9 +15,11 @@ It opens real Markdown files, edits them as plain text, previews them beautifull
 
 ## Get miniMark
 
-- **[Mac App Store — $2.99](https://apps.apple.com/app/idTBD)** — auto-updates, signed, no Gatekeeper friction. Recommended for most people.
+- **[Mac App Store — $4.99](https://apps.apple.com/app/idTBD)** — auto-updates, signed, no Gatekeeper friction. Recommended for most people.
 - **[GitHub Releases — free DMG](https://github.com/sayyidfareed/miniMark/releases)** — same app, manual updates. For folks who'd rather vet what they install.
 - **Build from source** — see [Build](#build) below.
+
+> miniMark is **macOS only**. There is no iOS or Android version, and none is planned. The codebase is native SwiftUI targeting macOS 14.0+ (`SwiftUI` `DocumentGroup`, sandboxed, hardened-runtime). It is intentionally a Mac-native writing tool.
 
 Source is MIT (with Commons Clause) either way. The App Store version pays for convenience and supports continued development.
 

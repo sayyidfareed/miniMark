@@ -22,6 +22,7 @@ struct DocumentView: View {
   let exportCoordinator: MarkdownExportCoordinator
 
   @AppStorage(Self.defaultModeKey) private var defaultModeRaw = Mode.source.rawValue
+  @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
   @State private var mode: Mode
   @State private var selection = TextSelection.zero
   @State private var previewMarkdown = ""
@@ -97,8 +98,12 @@ struct DocumentView: View {
     }
     .animation(.easeInOut(duration: 0.18), value: mode)
     .onAppear {
+      AppAppearanceController.apply(appearanceRaw)
       previewMarkdown = document.text
       exportCoordinator.updateCurrentContext(exportContext)
+    }
+    .onChange(of: appearanceRaw) { _, newValue in
+      AppAppearanceController.apply(newValue)
     }
     .onChange(of: document.text) { _, newValue in
       schedulePreviewUpdate(for: newValue)
@@ -133,6 +138,8 @@ struct DocumentView: View {
       }
 
       Spacer()
+
+      appearancePicker
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 9)
@@ -165,6 +172,19 @@ struct DocumentView: View {
     }
     .buttonStyle(.plain)
     .help("Click to switch which mode documents open in")
+  }
+
+  private var appearancePicker: some View {
+    Picker("Appearance", selection: $appearanceRaw) {
+      ForEach(AppAppearance.allCases) { appearance in
+        Label(appearance.rawValue, systemImage: appearance.systemImage)
+          .tag(appearance.rawValue)
+      }
+    }
+    .pickerStyle(.segmented)
+    .frame(width: 236)
+    .labelsHidden()
+    .help("Use the system, light, or dark appearance")
   }
 
   private var statusBar: some View {

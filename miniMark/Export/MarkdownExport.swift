@@ -563,7 +563,7 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
     window = NSApp.keyWindow
 
     let configuration = WKWebViewConfiguration()
-    configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+    configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
     let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 760, height: 980), configuration: configuration)
     webView.navigationDelegate = self
@@ -578,6 +578,28 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    waitForMermaid(in: webView, attemptsRemaining: 100)
+  }
+
+  private func waitForMermaid(in webView: WKWebView, attemptsRemaining: Int) {
+    webView.evaluateJavaScript(
+      "document.body.dataset.mermaidReady !== 'pending'"
+    ) { [weak self, weak webView] result, _ in
+      guard let self, let webView else { return }
+
+      if (result as? Bool) == true || attemptsRemaining <= 0 {
+        self.runPrintOperation(for: webView)
+        return
+      }
+
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak webView] in
+        guard let self, let webView else { return }
+        self.waitForMermaid(in: webView, attemptsRemaining: attemptsRemaining - 1)
+      }
+    }
+  }
+
+  private func runPrintOperation(for webView: WKWebView) {
     let printInfo = NSPrintInfo.shared.copy() as? NSPrintInfo ?? NSPrintInfo()
     printInfo.topMargin = 52
     printInfo.bottomMargin = 52

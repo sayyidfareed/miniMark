@@ -57,6 +57,42 @@ final class MarkdownExportTests: XCTestCase {
     XCTAssertFalse(html.contains(#"class="codeblock-copy""#))
   }
 
+  func testPrintHTMLRendersMermaidBeforePDFOutput() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: """
+      ```mermaid
+      graph TD
+      A-->B
+      ```
+      """,
+      baseURL: nil,
+      mode: .print
+    )
+
+    XCTAssertTrue(html.contains(#"<pre class="mermaid">graph TD"#))
+    XCTAssertTrue(html.contains("mermaid.initialize"))
+    XCTAssertTrue(html.contains("mermaidReady = 'pending'"))
+    XCTAssertTrue(html.contains("mermaidReady = 'ready'"))
+  }
+
+  func testMermaidHTMLDefinesVisibleDarkModeLines() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: """
+      ```mermaid
+      sequenceDiagram
+      A->>B: Hello
+      ```
+      """,
+      baseURL: nil,
+      mode: .preview
+    )
+
+    XCTAssertTrue(html.contains(".mermaid .flowchart-link"))
+    XCTAssertTrue(html.contains(".mermaid .messageLine0"))
+    XCTAssertTrue(html.contains("stroke: #d6dde8 !important"))
+    XCTAssertTrue(html.contains("theme: isDark ? 'dark' : 'default'"))
+  }
+
   func testRichTextHTMLUsesCompactTablesAndImageWidths() {
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(
       for: """

@@ -6,9 +6,15 @@ import WebKit
 struct MarkdownPreview: View {
   let markdown: String
   let fileURL: URL?
+  @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
 
   var body: some View {
-    MarkdownWebPreview(markdown: markdown, documentURL: fileURL, baseURL: baseURL)
+    MarkdownWebPreview(
+      markdown: markdown,
+      documentURL: fileURL,
+      baseURL: baseURL,
+      appearanceToken: appearanceRaw
+    )
       .background(Color(nsColor: .textBackgroundColor))
   }
 
@@ -29,7 +35,7 @@ struct MarkdownPreviewHTMLRenderer {
     }
 
     var rendersMermaid: Bool {
-      self == .preview || self == .export
+      self == .preview || self == .export || self == .print
     }
 
     var isRichText: Bool {
@@ -330,6 +336,23 @@ struct MarkdownPreviewHTMLRenderer {
           height: auto;
         }
 
+        @media (prefers-color-scheme: dark) {
+          .mermaid .flowchart-link,
+          .mermaid .edgePath path,
+          .mermaid .messageLine0,
+          .mermaid .messageLine1,
+          .mermaid .actor-line,
+          .mermaid line,
+          .mermaid polyline {
+            stroke: #d6dde8 !important;
+          }
+
+          .mermaid marker path {
+            fill: #d6dde8 !important;
+            stroke: #d6dde8 !important;
+          }
+        }
+
         blockquote {
           padding-left: 1em;
           color: var(--muted);
@@ -609,14 +632,36 @@ struct MarkdownPreviewHTMLRenderer {
       <script>
         \(source)
         (function () {
-          if (!window.mermaid) return;
+          document.body.dataset.mermaidReady = 'pending';
+          if (!window.mermaid) {
+            document.body.dataset.mermaidReady = 'unavailable';
+            return;
+          }
+
+          var isDark = window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
           mermaid.initialize({
             startOnLoad: false,
-            securityLevel: 'strict'
+            securityLevel: 'strict',
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark ? {
+              lineColor: '#d6dde8',
+              signalColor: '#d6dde8',
+              signalTextColor: '#f2f2f2'
+            } : {
+              lineColor: '#24292f',
+              signalColor: '#24292f'
+            }
           });
-          mermaid.run({
+
+          var rendering = mermaid.run({
             querySelector: '.mermaid',
             suppressErrors: true
+          });
+          Promise.resolve(rendering).then(function () {
+            document.body.dataset.mermaidReady = 'ready';
+          }, function () {
+            document.body.dataset.mermaidReady = 'failed';
           });
         })();
       </script>
@@ -1291,6 +1336,7 @@ private struct MarkdownWebPreview: NSViewRepresentable {
   let markdown: String
   let documentURL: URL?
   let baseURL: URL?
+  let appearanceToken: String
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -1317,9 +1363,15 @@ private struct MarkdownWebPreview: NSViewRepresentable {
     requestFolderAccessIfNeeded(in: webView, coordinator: coordinator)
 
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: baseURL)
-    guard html != coordinator.currentHTML else { return }
+    guard
+      html != coordinator.currentHTML
+        || appearanceToken != coordinator.currentAppearanceToken
+    else {
+      return
+    }
 
     coordinator.currentHTML = html
+    coordinator.currentAppearanceToken = appearanceToken
     webView.loadHTMLString(html, baseURL: baseURL)
   }
 
@@ -1364,6 +1416,7 @@ private struct MarkdownWebPreview: NSViewRepresentable {
   final class Coordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
     var currentHTML = ""
+    var currentAppearanceToken = ""
     var folderAccessTask: Task<Void, Never>?
     var requestedFolderAccessPaths = Set<String>()
     var accessibleFolderPaths = Set<String>()
