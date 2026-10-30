@@ -4,7 +4,7 @@ import WebKit
 
 /// Renders the app's own window to PNG files for the App Store listing.
 ///
-/// Launch with `--snapshot <directory>`. Writes 2880x1800 opaque PNGs (a 1440x900
+/// Launch with `--snapshot <name>`. Writes 2880x1800 opaque PNGs (a 1440x900
 /// window at 2x) for source and preview, light and dark, then quits. It draws its
 /// own views instead of capturing the screen, so nothing else on the desktop is read.
 @MainActor
@@ -13,12 +13,15 @@ final class SnapshotRunner {
   private let coordinator = MarkdownExportCoordinator()
   private let windowSize = NSSize(width: 1440, height: 900)
 
+  /// `--snapshot <name>` writes into a folder called `<name>` inside the app's own
+  /// temporary directory, because the sandbox does not allow writing elsewhere.
   static func outputDirectory(from arguments: [String]) -> URL? {
     guard
       let flag = arguments.firstIndex(of: "--snapshot"),
       arguments.indices.contains(flag + 1)
     else { return nil }
-    return URL(fileURLWithPath: arguments[flag + 1], isDirectory: true)
+    let name = arguments[flag + 1].replacingOccurrences(of: "/", with: "-")
+    return FileManager.default.temporaryDirectory.appendingPathComponent(name, isDirectory: true)
   }
 
   init(outputDirectory: URL) {
@@ -39,6 +42,8 @@ final class SnapshotRunner {
       await capture(name: variant.name, mode: variant.mode, appearance: variant.appearance)
     }
 
+    print("snapshot-output: \(outputDirectory.path)")
+    fflush(stdout)
     NSApp.terminate(nil)
   }
 
