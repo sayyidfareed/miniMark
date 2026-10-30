@@ -44,6 +44,7 @@ STATUS=0
 for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests MarkdownExportTests PreviewSupportTests; do
   run_limited 180 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS" \
     -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- test-without-building \
+    -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 \
     -only-testing:"miniMarkTests/$cls" > "$OUT/test-$cls.log" 2>&1
   code=$?
   passed=$(grep -c "passed on" "$OUT/test-$cls.log")
