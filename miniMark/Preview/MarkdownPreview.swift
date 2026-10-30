@@ -1369,22 +1369,24 @@ struct MarkdownPreviewHTMLRenderer {
       var depth = 1
       var scan = index + 1
       var end: String.Index?
+      var endMatch = 0
       while scan < matches.count {
-        defer { scan += 1 }
-        guard let next = details(matches[scan]), next.name == opening.name else { continue }
-        if isRawText {
-          if next.closing { end = next.range.upperBound; break }
-        } else if next.closing {
-          depth -= 1
-          if depth == 0 { end = next.range.upperBound; break }
-        } else if !next.selfClosing {
-          depth += 1
+        if let next = details(matches[scan]), next.name == opening.name {
+          if isRawText {
+            if next.closing { end = next.range.upperBound; endMatch = scan; break }
+          } else if next.closing {
+            depth -= 1
+            if depth == 0 { end = next.range.upperBound; endMatch = scan; break }
+          } else if !next.selfClosing {
+            depth += 1
+          }
         }
+        scan += 1
       }
 
       if let end {
         cursor = end
-        index = scan + 1
+        index = endMatch + 1
       } else {
         cursor = html.endIndex
         index = matches.count
