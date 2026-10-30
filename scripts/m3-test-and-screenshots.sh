@@ -8,10 +8,13 @@ set -uo pipefail
 # The run helper executes a copy of this script from its own folder, with the repo as the working directory.
 ROOT="$(pwd)"
 [[ -d "$ROOT/miniMark.xcodeproj" ]] || { echo "run from the repo root: miniMark.xcodeproj not found in $ROOT"; exit 2; }
-OUT="$ROOT/build/m3-run"
-DD="$(mktemp -d "${TMPDIR:-/tmp}/minimark-dd.XXXXXX")"
-rm -rf "$OUT"
-mkdir -p "$OUT/screenshots"
+# Everything this run writes goes into one fresh folder under build/m3-run (git-ignored).
+# Nothing outside it is created or deleted, and no earlier run's output is touched.
+RUN_ROOT="$ROOT/build/m3-run"
+OUT="$RUN_ROOT/$(date +%Y%m%dT%H%M%S)-$$"
+DD="$OUT/derived"
+mkdir -p "$OUT/screenshots" "$DD"
+ln -sfn "$OUT" "$RUN_ROOT/latest"
 cd "$ROOT"
 
 # Run a command, kill it after $1 seconds. Prints "TIMEOUT" and returns 124 if it had to.
@@ -63,6 +66,7 @@ APP="$DD/Build/Products/Release/miniMark.app"
   lipo -archs "$APP/Contents/MacOS/miniMark" 2>&1
 } | tee -a "$OUT/summary.txt"
 
+# The sandboxed app can only write inside its own container; it reports that folder, and the PNGs are copied out below.
 run_limited 150 "$APP/Contents/MacOS/miniMark" --snapshot minimark-shots > "$OUT/snapshot.log" 2>&1
 SHOTS="$(sed -n 's/^snapshot-output: //p' "$OUT/snapshot.log" | tail -n 1)"
 if [[ -n "$SHOTS" && -d "$SHOTS" ]]; then
@@ -77,5 +81,6 @@ fi
   done
 } | tee -a "$OUT/summary.txt"
 
-rm -rf "$DD"
+# Derived data is large; remove only the folder this run created inside its own output folder.
+if [[ "$DD" == "$RUN_ROOT"/*/derived && -d "$DD" ]]; then rm -rf -- "$DD"; fi
 exit "$STATUS"
