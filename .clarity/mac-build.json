@@ -1,4 +1,31 @@
-{"recipes": {
-  "build": {"argv": ["/bin/bash", "-c", "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_IDENTITY=- build; mkdir -p build; ditto -c -k --keepParent build/dd/Build/Products/Release/miniMark.app build/miniMark.app.zip"], "output": "build/miniMark.app.zip", "workspace": "persistent"},
-  "test": {"argv": ["/bin/bash", "-c", "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -derivedDataPath build/dd -resultBundlePath build/test.xcresult test; ditto -c -k --keepParent build/test.xcresult build/test-results.zip"], "output": "build/test-results.zip", "workspace": "persistent:tests"}
-}}
+{
+ "recipes": {
+  "build": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_IDENTITY=- build; mkdir -p build; ditto -c -k --keepParent build/dd/Build/Products/Release/miniMark.app build/miniMark.app.zip"
+   ],
+   "output": "build/miniMark.app.zip",
+   "workspace": "persistent"
+  },
+  "test": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -derivedDataPath build/dd -resultBundlePath build/test.xcresult test; ditto -c -k --keepParent build/test.xcresult build/test-results.zip"
+   ],
+   "output": "build/test-results.zip",
+   "workspace": "persistent:tests"
+  },
+  "compile-tests": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -derivedDataPath build/dd build-for-testing CODE_SIGN_IDENTITY=-; mkdir -p build; echo ok > build/compile-tests.txt"
+   ],
+   "output": "build/compile-tests.txt",
+   "workspace": "persistent:tests"
+  }
+ }
+}
