@@ -1360,7 +1360,9 @@ struct MarkdownPreviewHTMLRenderer {
 
       result += html[cursor..<opening.range.lowerBound]
 
-      if opening.name == "embed" || opening.selfClosing {
+      // Only svg is self-closing in HTML; "<script/>", "<form/>" and the rest still open an element.
+      let closesItself = opening.selfClosing && opening.name == "svg"
+      if opening.name == "embed" || closesItself {
         cursor = opening.range.upperBound
         index += 1
         continue
@@ -1377,7 +1379,7 @@ struct MarkdownPreviewHTMLRenderer {
           } else if next.closing {
             depth -= 1
             if depth == 0 { end = next.range.upperBound; endMatch = scan; break }
-          } else if !next.selfClosing {
+          } else if !(next.selfClosing && next.name == "svg") {
             depth += 1
           }
         }

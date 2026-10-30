@@ -553,4 +553,31 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertFalse(html.contains("alert(1)"))
     XCTAssertFalse(html.contains("after"))
   }
+
+  func testSelfClosingSyntaxDoesNotSkipRemovalOfRawTextElements() {
+    for tag in ["script", "style", "iframe", "noscript"] {
+      let closed = MarkdownPreviewHTMLRenderer.htmlDocument(
+        for: "<div><\(tag)/>must disappear</\(tag)><p>kept</p></div>",
+        baseURL: nil
+      )
+      XCTAssertFalse(closed.contains("must disappear"), "<\(tag)/> kept its contents")
+      XCTAssertTrue(closed.contains("<p>kept</p>"), "<\(tag)/> removed too much")
+
+      let unclosed = MarkdownPreviewHTMLRenderer.htmlDocument(
+        for: "<div><p>before</p><\(tag)/>must disappear<p>after</p></div>",
+        baseURL: nil
+      )
+      XCTAssertFalse(unclosed.contains("must disappear"), "unclosed <\(tag)/> kept its contents")
+      XCTAssertFalse(unclosed.contains("after"), "unclosed <\(tag)/> did not drop the rest")
+    }
+  }
+
+  func testSelfClosingSvgIsEmptyButFormStillOpens() {
+    let svg = MarkdownPreviewHTMLRenderer.htmlDocument(for: "<div><svg/><p>kept</p></div>", baseURL: nil)
+    XCTAssertTrue(svg.contains("<p>kept</p>"))
+
+    let form = MarkdownPreviewHTMLRenderer.htmlDocument(for: "<div><form/>must disappear</form><p>kept</p></div>", baseURL: nil)
+    XCTAssertFalse(form.contains("must disappear"))
+    XCTAssertTrue(form.contains("<p>kept</p>"))
+  }
 }
