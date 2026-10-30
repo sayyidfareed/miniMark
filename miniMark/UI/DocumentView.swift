@@ -32,13 +32,14 @@ struct DocumentView: View {
   init(
     document: Binding<MarkdownDocument>,
     fileURL: URL?,
-    exportCoordinator: MarkdownExportCoordinator
+    exportCoordinator: MarkdownExportCoordinator,
+    initialMode: Mode? = nil
   ) {
     self._document = document
     self.fileURL = fileURL
     self.exportCoordinator = exportCoordinator
 
-    let savedMode = UserDefaults.standard.string(forKey: Self.defaultModeKey)
+    let savedMode = initialMode ?? UserDefaults.standard.string(forKey: Self.defaultModeKey)
       .flatMap(Mode.init(rawValue:)) ?? .source
     self._mode = State(initialValue: savedMode)
   }

@@ -24,6 +24,8 @@
 		A00000000000000000000115 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000216 /* PrivacyInfo.xcprivacy */; };
 		A00000000000000000000118 /* Mermaid in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000220 /* Mermaid */; };
 		A00000000000000000000140 /* Math in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000240 /* Math */; };
+		A00000000000000000000150 /* SnapshotRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000250 /* SnapshotRunner.swift */; };
+		A00000000000000000000151 /* SnapshotSampleDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000251 /* SnapshotSampleDocument.swift */; };
 		A00000000000000000000116 /* MarkdownExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000218 /* MarkdownExport.swift */; };
 		A00000000000000000000117 /* MarkdownFolderAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000219 /* MarkdownFolderAccess.swift */; };
 		A00000000000000000000121 /* MarkdownDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000221 /* MarkdownDocumentTests.swift */; };
@@ -69,6 +71,8 @@
 		A00000000000000000000219 /* MarkdownFolderAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFolderAccess.swift; sourceTree = "<group>"; };
 		A00000000000000000000220 /* Mermaid */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Mermaid; sourceTree = "<group>"; };
 		A00000000000000000000240 /* Math */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Math; sourceTree = "<group>"; };
+		A00000000000000000000250 /* SnapshotRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotRunner.swift; sourceTree = "<group>"; };
+		A00000000000000000000251 /* SnapshotSampleDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotSampleDocument.swift; sourceTree = "<group>"; };
 		A00000000000000000000221 /* MarkdownDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocumentTests.swift; sourceTree = "<group>"; };
 		A00000000000000000000222 /* MarkdownFormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormattingTests.swift; sourceTree = "<group>"; };
 		A00000000000000000000223 /* DocumentStatsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStatsTests.swift; sourceTree = "<group>"; };
@@ -119,6 +123,7 @@
 				A00000000000000000000506 /* Formatting */,
 				A00000000000000000000507 /* Preview */,
 				A00000000000000000000508 /* Stats */,
+				A00000000000000000000540 /* Snapshot */,
 				A00000000000000000000509 /* UI */,
 				A00000000000000000000510 /* Resources */,
 				A00000000000000000000217 /* miniMark.entitlements */,
@@ -170,6 +175,15 @@
 					A00000000000000000000210 /* MarkdownPreview.swift */,
 				);
 			path = Preview;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000540 /* Snapshot */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000250 /* SnapshotRunner.swift */,
+				A00000000000000000000251 /* SnapshotSampleDocument.swift */,
+			);
+			path = Snapshot;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000508 /* Stats */ = {
@@ -359,6 +373,8 @@
 				A00000000000000000000112 /* FormatToolbar.swift in Sources */,
 				A00000000000000000000113 /* DocumentView.swift in Sources */,
 				A00000000000000000000116 /* MarkdownExport.swift in Sources */,
+				A00000000000000000000150 /* SnapshotRunner.swift in Sources */,
+				A00000000000000000000151 /* SnapshotSampleDocument.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
