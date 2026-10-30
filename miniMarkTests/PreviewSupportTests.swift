@@ -431,4 +431,16 @@ final class PreviewSupportTests: XCTestCase {
 
     XCTAssertEqual(html.components(separatedBy: "<code>code</code>").count - 1, 1)
   }
+
+  func testCodeBlocksKeepTheLanguageClassTheHighlighterReads() {
+    let markdown = """
+    ```swift
+    let value = 42
+    ```
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains(#"<code class="language-swift">"#))
+  }
 }

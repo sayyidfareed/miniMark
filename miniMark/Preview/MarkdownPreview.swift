@@ -60,10 +60,12 @@ struct MarkdownPreviewHTMLRenderer {
     let bodyClass = mode.isPreview ? "" : #" class="export-document""#
     let exportStyles = mode.isPreview ? "" : (mode.isRichText ? richTextDocumentStyles : exportDocumentStyles)
     let hasMath = !mode.isRichText && (body.contains("class=\"math-inline\"") || body.contains("class=\"math-block\""))
+    let hasHighlightableCode = !mode.isRichText && body.contains("<code class=\"language-")
     let script = [
       mode.isPreview ? copyButtonScript : "",
       mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : "",
-      hasMath ? (mathAssets ?? "") : ""
+      hasMath ? (mathAssets ?? "") : "",
+      hasHighlightableCode ? (highlightAssets ?? "") : ""
     ]
     .filter { !$0.isEmpty }
     .joined(separator: "\n")
@@ -1394,6 +1396,41 @@ struct MarkdownPreviewHTMLRenderer {
     }
     return nil
   }
+
+  private static let highlightAssets: String? = {
+    func text(_ name: String, _ ext: String) -> String? {
+      let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Highlight")
+        ?? Bundle.main.url(forResource: name, withExtension: ext)
+      return url.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+
+    guard
+      let script = text("highlight.min", "js"),
+      let light = text("github.min", "css"),
+      let dark = text("github-dark.min", "css")
+    else {
+      return nil
+    }
+
+    return """
+      <style>
+        \(light)
+        @media (prefers-color-scheme: dark) { \(dark) }
+        .codeblock pre code.hljs { background: transparent; padding: 0; }
+      </style>
+      <script>
+        \(script)
+        (function () {
+          if (!window.hljs) { return; }
+          document.querySelectorAll('.codeblock pre code[class*="language-"]').forEach(function (element) {
+            var match = /(?:^|\\s)language-([^\\s]+)/.exec(element.className);
+            if (!match || !hljs.getLanguage(match[1])) { return; }
+            try { hljs.highlightElement(element); } catch (error) {}
+          });
+        })();
+      </script>
+    """
+  }()
 
   private static let mathAssets: String? = {
     func text(_ name: String, _ ext: String) -> String? {

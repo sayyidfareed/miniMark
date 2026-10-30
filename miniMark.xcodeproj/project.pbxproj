@@ -24,6 +24,7 @@
 		A00000000000000000000115 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000216 /* PrivacyInfo.xcprivacy */; };
 		A00000000000000000000118 /* Mermaid in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000220 /* Mermaid */; };
 		A00000000000000000000140 /* Math in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000240 /* Math */; };
+		A00000000000000000000141 /* Highlight in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000241 /* Highlight */; };
 		A00000000000000000000150 /* SnapshotRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000250 /* SnapshotRunner.swift */; };
 		A00000000000000000000151 /* SnapshotSampleDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000251 /* SnapshotSampleDocument.swift */; };
 		A00000000000000000000116 /* MarkdownExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000218 /* MarkdownExport.swift */; };
@@ -71,6 +72,7 @@
 		A00000000000000000000219 /* MarkdownFolderAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFolderAccess.swift; sourceTree = "<group>"; };
 		A00000000000000000000220 /* Mermaid */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Mermaid; sourceTree = "<group>"; };
 		A00000000000000000000240 /* Math */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Math; sourceTree = "<group>"; };
+		A00000000000000000000241 /* Highlight */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Highlight; sourceTree = "<group>"; };
 		A00000000000000000000250 /* SnapshotRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotRunner.swift; sourceTree = "<group>"; };
 		A00000000000000000000251 /* SnapshotSampleDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotSampleDocument.swift; sourceTree = "<group>"; };
 		A00000000000000000000221 /* MarkdownDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocumentTests.swift; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 				A00000000000000000000215 /* Assets.xcassets */,
 				A00000000000000000000220 /* Mermaid */,
 				A00000000000000000000240 /* Math */,
+				A00000000000000000000241 /* Highlight */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -341,6 +344,7 @@
 				A00000000000000000000115 /* PrivacyInfo.xcprivacy in Resources */,
 				A00000000000000000000118 /* Mermaid in Resources */,
 				A00000000000000000000140 /* Math in Resources */,
+				A00000000000000000000141 /* Highlight in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
