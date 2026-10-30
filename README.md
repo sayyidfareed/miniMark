@@ -15,13 +15,12 @@ It opens real Markdown files, edits them as plain text, previews them beautifull
 
 ## Get miniMark
 
-- **[Mac App Store — $4.99](https://apps.apple.com/app/idTBD)** — auto-updates, signed, no Gatekeeper friction. Recommended for most people.
-- **[GitHub Releases — free DMG](https://github.com/sayyidfareed/miniMark/releases)** — same app, manual updates. For folks who'd rather vet what they install.
+- **Mac App Store** — coming soon.
 - **Build from source** — see [Build](#build) below.
 
 > miniMark is **macOS only**. There is no iOS or Android version, and none is planned. The codebase is native SwiftUI targeting macOS 14.0+ (`SwiftUI` `DocumentGroup`, sandboxed, hardened-runtime). It is intentionally a Mac-native writing tool.
 
-Source is MIT (with Commons Clause) either way. The App Store version pays for convenience and supports continued development.
+Source is MIT (with Commons Clause). The App Store version pays for convenience and supports continued development.
 
 ## Why It Exists
 
@@ -43,8 +42,8 @@ No account. No workspace lock-in. No mystery format.
 - **Plain-text Markdown editing** for `.md` and `.markdown` files
 - **Source and Preview modes** with a compact segmented switcher
 - **Syntax-aware source styling** for headings, lists, quotes, links, emphasis, inline code, and fences
-- **Markdown preview** powered by MarkdownUI
-- **Code block highlighting** powered by Highlightr
+- **Markdown preview** rendered with WebKit: headings, lists, task lists, tables, quotes, strikethrough, footnotes, links, and images
+- **Math** (`$…$` and `$$…$$`, rendered with KaTeX) and **Mermaid diagrams** in preview, HTML export, and PDF
 - **Copy button on preview code blocks**
 - **Formatting toolbar** for bold, italic, links, headings, lists, quotes, inline code, and code blocks
 - **Export** to TXT, RTF, and HTML, plus Print / Save as PDF through the standard macOS print sheet
@@ -122,47 +121,6 @@ BUILD_NUMBER=42 \
 OUTPUT="$PWD/build/miniMark-0.1.0.dmg" \
 ./scripts/build_dmg.sh
 ```
-
-## GitHub Releases
-
-Releases are published by `.github/workflows/release.yml` when a version tag is pushed:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow resolves Swift packages, runs the test suite, builds a signed and notarized versioned DMG, and attaches it to a GitHub Release with generated release notes.
-
-You can also run the workflow manually from GitHub Actions and provide a tag such as `v0.1.0`.
-
-Before publishing releases, add the Apple Developer details in the GitHub website:
-
-1. Open the repo on GitHub.
-2. Go to **Settings > Secrets and variables > Actions**.
-3. Add repository variables:
-
-```text
-APPLE_TEAM_ID=ABCDE12345
-DEVELOPER_ID_APPLICATION=Developer ID Application: Your Name or Company (ABCDE12345)
-```
-
-4. Add repository secrets:
-
-```text
-APPLE_ID=you@example.com
-APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
-DEVELOPER_ID_CERTIFICATE_PASSWORD=your-p12-password
-DEVELOPER_ID_CERTIFICATE_BASE64=base64-encoded-developer-id-application-p12
-```
-
-To create `DEVELOPER_ID_CERTIFICATE_BASE64`, export your Developer ID Application certificate from Keychain Access as a `.p12`, then run:
-
-```sh
-base64 -i DeveloperIDApplication.p12 | pbcopy
-```
-
-Paste the copied value into the GitHub secret.
 
 ## Project Map
 

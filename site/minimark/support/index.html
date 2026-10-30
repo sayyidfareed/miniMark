@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>miniMark Support</title>
+<style>
+  :root { color-scheme: light dark; --bg: #ffffff; --text: #1d1d1f; --muted: #616166; --link: #0b63d1; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --text: #f2f2f4; --muted: #a1a1a6; --link: #6aa7ff; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.2rem; margin: 2rem 0 .5rem; }
+  p, li { margin: .5rem 0; }
+  .meta { color: var(--muted); margin: 0 0 2rem; }
+  a { color: var(--link); }
+  code { font: 0.95em ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1>miniMark Support</h1>
+  <p class="meta">A small, native Markdown editor for the Mac. Requires macOS 14 or later.</p>
+
+  <h2>Contact</h2>
+  <p>Email <a href="mailto:support@ideius.com">support@ideius.com</a>. Please include your macOS version, your miniMark version (miniMark menu, About miniMark) and what you did before the problem appeared. Do not attach private documents unless you want us to see them.</p>
+
+  <h2>Set miniMark as your default Markdown app</h2>
+  <ol>
+    <li>In Finder, select any <code>.md</code> file.</li>
+    <li>Choose File, then Get Info (or press Command-I).</li>
+    <li>Under Open with, choose miniMark.</li>
+    <li>Click Change All, then confirm.</li>
+  </ol>
+
+  <h2>Images next to my document do not show</h2>
+  <p>The Mac only lets miniMark read files you have allowed. When the preview finds pictures in the document&rsquo;s folder, miniMark asks you to choose that folder once. After you do, the pictures appear and macOS remembers the choice.</p>
+
+  <h2>What the preview supports</h2>
+  <p>Headings, bold, italic, strikethrough, links, images, lists, task lists, tables, quotes, code blocks, footnotes, LaTeX math with <code>$&hellip;$</code> and <code>$$&hellip;$$</code>, and Mermaid diagrams in <code>mermaid</code> code blocks.</p>
+
+  <h2>Export and print</h2>
+  <p>File, Export saves TXT, RTF or HTML. File, Print opens the standard Mac print sheet, where you can choose Save as PDF. Math and diagrams appear in HTML and PDF; the RTF export keeps math as its source text.</p>
+
+  <h2>Privacy</h2>
+  <p>See the <a href="/minimark/privacy">privacy policy</a>. miniMark collects nothing.</p>
+</main>
+</body>
+</html>
