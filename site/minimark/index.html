@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>miniMark: Tiny Markdown Editor for Mac</title>
+<meta name="description" content="miniMark is a small, native Markdown editor for Mac. Write in plain text, flip to a clean preview, and export to RTF, HTML or PDF. Tables, task lists, footnotes, math, diagrams. Collects nothing.">
+<link rel="canonical" href="https://ideius.com/minimark/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F5F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1012" media="(prefers-color-scheme: dark)">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="miniMark">
+<meta property="og:title" content="miniMark: Tiny Markdown Editor for Mac">
+<meta property="og:description" content="Write in plain text. Flip to a clean preview. Export when it is ready. A small native Mac app that collects nothing.">
+<meta property="og:url" content="https://ideius.com/minimark/">
+<meta property="og:image" content="https://ideius.com/minimark/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="miniMark showing a Markdown file as source next to its rendered preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="miniMark: Tiny Markdown Editor for Mac">
+<meta name="twitter:description" content="Write in plain text. Flip to a clean preview. Export when it is ready.">
+<meta name="twitter:image" content="https://ideius.com/minimark/assets/og.png">
+
+<link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/bricolage-grotesque-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/instrument-sans-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "miniMark",
+  "url": "https://ideius.com/minimark/",
+  "description": "A small, native Markdown editor for Mac with source and preview modes, tables, task lists, footnotes, math, Mermaid diagrams, code highlighting, and export to TXT, RTF, HTML and PDF.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "macOS 14.0 or later",
+  "image": "https://ideius.com/minimark/assets/icon-512.png",
+  "screenshot": [
+    "https://ideius.com/minimark/assets/shot-source-light.webp",
+    "https://ideius.com/minimark/assets/shot-preview-light.webp"
+  ],
+  "featureList": [
+    "Source and preview modes",
+    "Tables, task lists, footnotes and strikethrough",
+    "LaTeX math and Mermaid diagrams",
+    "Code block highlighting",
+    "Export to TXT, RTF and HTML, and print to PDF",
+    "Light and dark appearance",
+    "Collects no data"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "What is miniMark?", "acceptedAnswer": {"@type": "Answer", "text": "miniMark is a small, native Markdown editor for Mac. It opens .md and .markdown files, lets you edit them as plain text, and shows a clean rendered preview."}},
+    {"@type": "Question", "name": "Which Macs does miniMark run on?", "acceptedAnswer": {"@type": "Answer", "text": "Any Mac running macOS 14 Sonoma or later."}},
+    {"@type": "Question", "name": "Does miniMark collect my data?", "acceptedAnswer": {"@type": "Answer", "text": "No. There are no accounts, no analytics and no tracking, and nothing you write is sent to anyone. Your files stay where you save them."}},
+    {"@type": "Question", "name": "What Markdown does the preview support?", "acceptedAnswer": {"@type": "Answer", "text": "Headings, bold, italic, strikethrough, links, images, lists, task lists, tables, quotes, code blocks with highlighting, footnotes, LaTeX math, and Mermaid diagrams."}},
+    {"@type": "Question", "name": "How do I export a Markdown file?", "acceptedAnswer": {"@type": "Answer", "text": "Use File, Export for TXT, RTF or HTML. Use File, Print and choose Save as PDF for a PDF. RTF files open in Word and Pages."}},
+    {"@type": "Question", "name": "Can miniMark show images stored next to my document?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The first time, macOS asks you to allow miniMark to read the document's folder. After that the pictures appear in the preview."}}
+  ]
+}
+</script>
+
+<style>
+  /* Layout: one wide column that reads like a printed spec sheet. Every feature is shown the same way,
+     as the Markdown you type next to what you get. The only loud colour is the highlighter (the <mark> element). */
+  @font-face { font-family: "Bricolage Grotesque"; src: url("assets/fonts/bricolage-grotesque-latin-wght.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+  @font-face { font-family: "Instrument Sans"; src: url("assets/fonts/instrument-sans-latin-wght.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+  @font-face { font-family: "JetBrains Mono"; src: url("assets/fonts/jetbrains-mono-latin-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+  :root {
+    --paper: #F4F5F2;
+    --panel: #FFFFFF;
+    --ink: #111418;
+    --muted: #556069;
+    --rule: #D3D8D2;
+    --marker: #FFE14D;
+    --marker-ink: #111418;
+    --link: #0A55C8;
+    --code-key: #8A2BB5;
+    --code-num: #B25000;
+    --shadow: 0 1px 2px rgba(17,20,24,.06), 0 12px 32px -8px rgba(17,20,24,.18);
+    --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --body: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --gutter: max(16px, env(safe-area-inset-left, 0px));
+    --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper: #0E1012;
+      --panel: #171A1D;
+      --ink: #EDEFEA;
+      --muted: #9CA5AC;
+      --rule: #2A3034;
+      --marker: #FFD83A;
+      --link: #7DB0FF;
+      --code-key: #D2A2F2;
+      --code-num: #FFB067;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 16px 40px -8px rgba(0,0,0,.7);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1.0625rem/1.6 var(--body);
+    padding-left: var(--gutter);
+    padding-right: var(--gutter-r);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 74rem; margin: 0 auto; }
+  img, picture, svg { max-width: 100%; }
+  a { color: var(--link); text-underline-offset: .18em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+  .skip { position: absolute; left: -999px; top: 0; background: var(--ink); color: var(--paper); padding: .6rem 1rem; z-index: 10; }
+  .skip:focus { left: 1rem; top: 1rem; }
+
+  mark {
+    color: var(--marker-ink);
+    background: linear-gradient(transparent 58%, var(--marker) 58%, var(--marker) 92%, transparent 92%);
+    padding: 0 .06em;
+    margin: 0 -.06em;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero mark { background-size: 0% 100%; background-repeat: no-repeat; animation: sweep .9s .25s cubic-bezier(.3,.7,.2,1) forwards; }
+    @keyframes sweep { to { background-size: 100% 100%; } }
+  }
+
+  /* header */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.25rem; flex-wrap: wrap; }
+  .brand { display: inline-flex; align-items: center; gap: .6rem; font: 700 1.35rem/1 var(--display); letter-spacing: -.02em; color: var(--ink); text-decoration: none; }
+  .brand img { width: 32px; height: 32px; border-radius: 8px; }
+  .top nav { display: flex; gap: 1.5rem; font-size: .95rem; }
+  .top nav a { color: var(--ink); text-decoration: none; }
+  .top nav a:hover { text-decoration: underline; text-underline-offset: .25em; }
+
+  /* hero */
+  .hero { padding-block: clamp(2rem, 6vw, 5rem) 2.5rem; }
+  .eyebrow { font: 400 .8rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 1.4rem; }
+  h1 { font: 700 clamp(2.6rem, 2.2rem + 5.6vw, 6rem)/.98 var(--display); letter-spacing: -.035em; margin: 0; max-width: 14ch; text-wrap: balance; }
+  .lede { font-size: clamp(1.1rem, 1rem + .5vw, 1.35rem); line-height: 1.5; max-width: 36em; margin: 1.6rem 0 0; color: var(--muted); }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; margin-top: 2rem; }
+  .badge { display: inline-flex; align-items: center; gap: .6rem; padding: .85rem 1.3rem; border-radius: 999px; background: var(--ink); color: var(--paper); font-weight: 600; font-size: 1rem; }
+  .badge small { font: 400 .78rem/1 var(--mono); opacity: .75; letter-spacing: .02em; }
+  .facts { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin: 1.6rem 0 0; padding: 0; list-style: none; font: 400 .82rem/1.3 var(--mono); color: var(--muted); }
+  .facts li::before { content: "\2192\00a0"; color: var(--ink); }
+
+  /* shots */
+  .shots { margin-top: clamp(2rem, 5vw, 3.5rem); display: grid; grid-template-columns: 1fr 1fr; gap: clamp(.75rem, 2vw, 1.5rem); align-items: start; }
+  .shot { margin: 0; }
+  .shot picture { display: block; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--rule); background: var(--panel); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot figcaption { font: 400 .78rem/1.4 var(--mono); color: var(--muted); letter-spacing: .04em; margin-top: .7rem; display: flex; justify-content: space-between; gap: 1rem; }
+  .shot figcaption b { color: var(--ink); font-weight: 400; text-transform: uppercase; }
+
+  /* sections */
+  section { padding-block: clamp(3rem, 7vw, 6rem); border-top: 1px solid var(--rule); }
+  h2 { font: 700 clamp(1.9rem, 1.4rem + 2.4vw, 3.2rem)/1.05 var(--display); letter-spacing: -.03em; margin: 0; max-width: 18ch; text-wrap: balance; }
+  .sub { color: var(--muted); max-width: 38em; margin: 1rem 0 0; }
+  h3 { font: 600 1.15rem/1.25 var(--display); letter-spacing: -.01em; margin: 0 0 .5rem; }
+
+  /* feature pairs: source -> result */
+  .pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1.25rem; margin-top: 2.5rem; }
+  .pair { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .pair h3 { font: 400 .78rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: .9rem 1rem; margin: 0; border-bottom: 1px solid var(--rule); }
+  .pair .src { margin: 0; padding: 1rem; font: 400 .85rem/1.55 var(--mono); border-bottom: 1px dashed var(--rule); white-space: pre-wrap; overflow-x: auto; }
+  .pair .out { padding: 1rem; flex: 1; font-size: 1rem; }
+  .pair .out p { margin: 0; }
+  .pair table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  .pair th, .pair td { padding: .35rem .6rem; border: 1px solid var(--rule); }
+  .pair th { text-align: left; background: color-mix(in srgb, var(--rule) 40%, transparent); }
+  .pair td.r, .pair th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+  .tasks input { margin: 0 .5rem 0 0; accent-color: var(--ink); }
+  .fn { font-size: .85rem; color: var(--muted); border-top: 1px solid var(--rule); margin-top: .8rem; padding-top: .5rem; }
+  .code { margin: 0; font: 400 .9rem/1.55 var(--mono); }
+  .k { color: var(--code-key); } .n { color: var(--code-num); }
+  .out math { font-size: 1.35em; }
+  .out svg { display: block; width: 100%; height: auto; max-height: 120px; }
+  .out svg text { font: 500 13px var(--body); fill: var(--ink); }
+  .out svg rect { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+  .out svg path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+
+  /* details */
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 2rem 2.5rem; margin-top: 2.5rem; }
+  .cols p { margin: 0; color: var(--muted); }
+  kbd { font: 400 .85em var(--mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 5px; padding: .05em .4em; background: var(--panel); }
+
+  /* privacy band */
+  .band { display: grid; gap: 1rem; }
+  .band p { font: 600 clamp(1.4rem, 1.1rem + 1.6vw, 2.4rem)/1.2 var(--display); letter-spacing: -.02em; margin: 0; max-width: 24ch; text-wrap: balance; }
+
+  /* faq */
+  .faq { margin-top: 2rem; max-width: 46rem; }
+  .faq details { border-top: 1px solid var(--rule); padding: 1rem 0; }
+  .faq details:last-child { border-bottom: 1px solid var(--rule); }
+  .faq summary { cursor: pointer; font: 600 1.1rem/1.35 var(--display); list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; font: 400 1.4rem/1 var(--mono); color: var(--muted); }
+  .faq details[open] summary::after { content: "\2212"; }
+  .faq p { margin: .7rem 0 0; color: var(--muted); max-width: 40em; }
+
+  footer { border-top: 1px solid var(--rule); padding-block: 2rem 3rem; font-size: .9rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .75rem 2rem; justify-content: space-between; }
+  footer nav { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  footer p { margin: 0; max-width: 40em; }
+
+  @media (max-width: 760px) {
+    .shots { grid-template-columns: 1fr; }
+    .top nav { gap: 1rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="assets/apple-touch-icon.png" width="32" height="32" alt="">mini<mark>Mark</mark></a>
+    <nav aria-label="Main">
+      <a href="#renders">What it renders</a>
+      <a href="#details">Details</a>
+      <a href="#faq">Questions</a>
+      <a href="support/">Support</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="hero">
+      <p class="eyebrow">Markdown editor for Mac</p>
+      <h1>A tiny <mark>Markdown</mark> editor for your Mac.</h1>
+      <p class="lede"><strong>Write in plain text. Flip to a clean preview. Export when it is ready.</strong> miniMark is a small native Mac app that opens your <code>.md</code> files and stays out of your way.</p>
+      <div class="cta">
+        <!-- Replace with the Mac App Store link and Apple's official badge once the app is live. -->
+        <span class="badge" role="note">Mac App Store <small>coming soon</small></span>
+        <a href="#renders">See what it renders</a>
+      </div>
+      <ul class="facts">
+        <li>macOS 14 or later</li>
+        <li>Your files stay on your Mac</li>
+        <li>Collects nothing</li>
+      </ul>
+
+      <div class="shots">
+        <figure class="shot">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shot-source-dark.webp">
+            <img src="assets/shot-source-light.webp" width="1600" height="1000" alt="miniMark in Source mode: a Markdown file with coloured headings, a task list, math and a table, above a status bar with word and character counts." fetchpriority="high">
+          </picture>
+          <figcaption><b>Source</b><span>plain text, styled as you type</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shot-preview-dark.webp">
+            <img src="assets/shot-preview-light.webp" width="1600" height="1000" alt="miniMark in Preview mode: the same file rendered with a checked task list, an equation, a table, a highlighted code block and a diagram." loading="lazy">
+          </picture>
+          <figcaption><b>Preview</b><span>the same file, rendered</span></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <section id="renders" aria-labelledby="renders-title">
+      <h2 id="renders-title">What you type, and what you get.</h2>
+      <p class="sub">The preview covers the Markdown people actually write in READMEs, notes and docs. Each box below is the source on top and the result underneath.</p>
+
+      <div class="pairs">
+        <article class="pair">
+          <h3>Task lists</h3>
+          <pre class="src">- [x] Write it
+- [ ] Ship it</pre>
+          <div class="out"><ul class="tasks"><li><input type="checkbox" checked disabled> Write it</li><li><input type="checkbox" disabled> Ship it</li></ul></div>
+        </article>
+
+        <article class="pair">
+          <h3>Tables</h3>
+          <pre class="src">| Build | Tests |
+| :-- | --: |
+| 1.0 | 42 |</pre>
+          <div class="out"><table><thead><tr><th>Build</th><th class="r">Tests</th></tr></thead><tbody><tr><td>1.0</td><td class="r">42</td></tr></tbody></table></div>
+        </article>
+
+        <article class="pair">
+          <h3>Footnotes</h3>
+          <pre class="src">Plain text, plus notes.[^1]
+
+[^1]: Numbered for you.</pre>
+          <div class="out"><p>Plain text, plus notes.<sup>1</sup></p><div class="fn">1. Numbered for you. &#8617;</div></div>
+        </article>
+
+        <article class="pair">
+          <h3>Math</h3>
+          <pre class="src">Euler: $e^{i\pi} + 1 = 0$</pre>
+          <div class="out"><p>Euler: <math><msup><mi>e</mi><mrow><mi>i</mi><mi>&#960;</mi></mrow></msup><mo>+</mo><mn>1</mn><mo>=</mo><mn>0</mn></math></p></div>
+        </article>
+
+        <article class="pair">
+          <h3>Code</h3>
+          <pre class="src">```swift
+let answer = 42
+```</pre>
+          <div class="out"><pre class="code"><span class="k">let</span> answer = <span class="n">42</span></pre></div>
+        </article>
+
+        <article class="pair">
+          <h3>Diagrams</h3>
+          <pre class="src">```mermaid
+flowchart LR
+  Write --> Preview
+```</pre>
+          <div class="out">
+            <svg viewBox="0 0 320 70" role="img" aria-label="Flowchart: Write leads to Preview">
+              <rect x="10" y="15" width="110" height="40" rx="8"/>
+              <text x="65" y="40" text-anchor="middle">Write</text>
+              <path d="M120 35 H196 M188 29 L198 35 L188 41"/>
+              <rect x="200" y="15" width="110" height="40" rx="8"/>
+              <text x="255" y="40" text-anchor="middle">Preview</text>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="details" aria-labelledby="details-title">
+      <h2 id="details-title">Small on purpose.</h2>
+      <div class="cols">
+        <div>
+          <h3>Plain files, nothing else</h3>
+          <p>Open and save ordinary <code>.md</code> and <code>.markdown</code> files wherever you keep them. No library to import, no account, no format that locks you in.</p>
+        </div>
+        <div>
+          <h3>Two views, one shortcut</h3>
+          <p>Press <kbd>&#8679;</kbd><kbd>&#8984;</kbd><kbd>P</kbd> to flip between Source and Preview. Pick which one new documents open in.</p>
+        </div>
+        <div>
+          <h3>A toolbar for when you forget</h3>
+          <p>Bold, italic, links, headings, lists, quotes, inline code and code blocks are one click away. Counts for words, characters, reading time, line and column sit at the bottom.</p>
+        </div>
+        <div>
+          <h3>Export and print</h3>
+          <p>Save TXT, RTF or HTML from the File menu. Print and choose Save as PDF. RTF opens in Word and Pages.</p>
+        </div>
+        <div>
+          <h3>Pictures next to your file</h3>
+          <p>Relative images show up in the preview. The first time, macOS asks you to allow the document's folder, and remembers your answer.</p>
+        </div>
+        <div>
+          <h3>Light, dark or system</h3>
+          <p>Follow your Mac or pick an appearance of your own. Code blocks and diagrams switch with it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="privacy-title">
+      <div class="band">
+        <h2 id="privacy-title" style="max-width:none">Privacy, in one line.</h2>
+        <p><mark>miniMark collects nothing.</mark> No accounts, no analytics, no tracking.</p>
+        <p style="font:400 1rem/1.6 var(--body);color:var(--muted);letter-spacing:0"><a href="privacy/">Read the privacy policy</a>, which is short.</p>
+      </div>
+    </section>
+
+    <section id="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">Questions.</h2>
+      <div class="faq">
+        <details>
+          <summary>What is miniMark?</summary>
+          <p>A small, native Markdown editor for Mac. It opens <code>.md</code> and <code>.markdown</code> files, lets you edit them as plain text, and shows a clean rendered preview.</p>
+        </details>
+        <details>
+          <summary>Which Macs does it run on?</summary>
+          <p>Any Mac running macOS 14 Sonoma or later.</p>
+        </details>
+        <details>
+          <summary>Does it collect my data?</summary>
+          <p>No. There are no accounts, no analytics and no tracking, and nothing you write is sent to anyone. Your files stay where you save them.</p>
+        </details>
+        <details>
+          <summary>What Markdown does the preview support?</summary>
+          <p>Headings, bold, italic, strikethrough, links, images, lists, task lists, tables, quotes, code blocks with highlighting, footnotes, LaTeX math, and Mermaid diagrams.</p>
+        </details>
+        <details>
+          <summary>How do I export a file?</summary>
+          <p>Use File, Export for TXT, RTF or HTML. Use File, Print and choose Save as PDF for a PDF. RTF files open in Word and Pages. Math and diagrams appear in HTML and PDF; the RTF export keeps math as its source text.</p>
+        </details>
+        <details>
+          <summary>Why does it ask for access to a folder?</summary>
+          <p>The Mac only lets an app read files you have allowed. When your document links to pictures in its folder, miniMark asks once so it can show them in the preview.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>miniMark is for macOS 14 or later. Mac and macOS are trademarks of Apple Inc.</p>
+    <nav aria-label="Footer">
+      <a href="privacy/">Privacy</a>
+      <a href="support/">Support</a>
+      <a href="mailto:support@ideius.com">support@ideius.com</a>
+    </nav>
+  </footer>
+</div>
+</body>
+</html>
