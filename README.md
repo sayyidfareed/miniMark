@@ -131,7 +131,7 @@ miniMark/
   Editor/       NSTextView-backed source editor and syntax styling
   Export/       TXT, RTF, HTML, and Print / PDF export
   Formatting/   Markdown formatting commands
-  Preview/      MarkdownUI preview and Highlightr integration
+  Preview/      WebKit HTML preview and rendering
   Stats/        Word, character, reading time, line, and column stats
   UI/           Main document view and formatting toolbar
 
