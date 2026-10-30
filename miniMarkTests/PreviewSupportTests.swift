@@ -423,4 +423,12 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertTrue(html.contains("$x^2$"))
     XCTAssertFalse(html.contains("data-tex"))
   }
+
+  func testPlaceholderMarkersInDocumentTextCannotInjectSegments() {
+    let markdown = "Use `code` then \u{E000}0\u{E001} here."
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertEqual(html.components(separatedBy: "<code>code</code>").count - 1, 1)
+  }
 }

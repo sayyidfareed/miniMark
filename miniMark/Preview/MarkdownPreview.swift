@@ -1280,7 +1280,11 @@ struct MarkdownPreviewHTMLRenderer {
     imageWidth: Int? = nil,
     footnotes: FootnoteIndex? = nil
   ) -> String {
+    // The placeholder markers below are private-use characters; drop them from the input
+    // so document text can never collide with a placeholder.
     var html = escapeHTML(markdown)
+      .replacingOccurrences(of: "\u{E000}", with: "")
+      .replacingOccurrences(of: "\u{E001}", with: "")
 
     // Code spans and math are swapped for placeholders so the emphasis and
     // link rules below cannot rewrite their contents.
