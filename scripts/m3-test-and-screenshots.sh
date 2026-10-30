@@ -4,7 +4,9 @@
 # 2880x1800 PNGs (no screen capture).  Everything lands in build/m3-run/.
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The run helper executes a copy of this script from its own folder, with the repo as the working directory.
+ROOT="$(pwd)"
+[[ -d "$ROOT/miniMark.xcodeproj" ]] || { echo "run from the repo root: miniMark.xcodeproj not found in $ROOT"; exit 2; }
 OUT="$ROOT/build/m3-run"
 DD="$(mktemp -d "${TMPDIR:-/tmp}/minimark-dd.XXXXXX")"
 rm -rf "$OUT"
