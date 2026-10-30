@@ -1294,13 +1294,8 @@ struct MarkdownPreviewHTMLRenderer {
   /// handlers, inline styles, and any link or image address that is not http, https,
   /// mailto, a relative path, or an embedded image.
   private static func sanitizeRawHTML(_ html: String) -> String {
-    let withoutActiveElements = replacingMatches(
-      in: html,
-      pattern: #"<(script|style|iframe|object|embed|noscript|template|form|svg)\b.*?</\1\s*>"#,
-      options: [.caseInsensitive, .dotMatchesLineSeparators]
-    ) { _ in "" }
-
-    let regex = regularExpression(for: #"<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>"#)
+    let withoutActiveElements = removingActiveElements(from: html)
+    let regex = regularExpression(for: htmlTagPattern)
     var result = ""
     var cursor = withoutActiveElements.startIndex
 
@@ -1324,6 +1319,79 @@ struct MarkdownPreviewHTMLRenderer {
     }
 
     result += withoutActiveElements[cursor...].replacingOccurrences(of: "<", with: "&lt;")
+    return result
+  }
+
+  private static let htmlTagPattern = #"<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>"#
+
+  /// Elements whose contents are text to the parser; they end at the first matching close tag.
+  private static let rawTextHTMLTags: Set<String> = ["script", "style", "iframe", "noscript"]
+
+  /// Elements that can nest, so their end is found by counting open and close tags.
+  private static let nestableActiveHTMLTags: Set<String> = ["svg", "template", "form", "object"]
+
+  /// Removes active elements together with everything inside them. Nested elements of the
+  /// same kind are counted, and an element that is never closed removes the rest of the
+  /// block, so nothing after an unclosed `<svg>` or `<script>` survives.
+  private static func removingActiveElements(from html: String) -> String {
+    let matches = regularExpression(for: htmlTagPattern)
+      .matches(in: html, range: NSRange(html.startIndex..., in: html))
+
+    func details(_ match: NSTextCheckingResult) -> (range: Range<String.Index>, name: String, closing: Bool, selfClosing: Bool)? {
+      guard let range = Range(match.range, in: html) else { return nil }
+      let attributes = match.capture(3, in: html) ?? ""
+      return (
+        range,
+        (match.capture(2, in: html) ?? "").lowercased(),
+        match.capture(1, in: html) == "/",
+        attributes.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("/")
+      )
+    }
+
+    var result = ""
+    var cursor = html.startIndex
+    var index = 0
+
+    while index < matches.count {
+      guard let opening = details(matches[index]) else { index += 1; continue }
+      let isRawText = rawTextHTMLTags.contains(opening.name)
+      let isNestable = nestableActiveHTMLTags.contains(opening.name)
+      guard !opening.closing, isRawText || isNestable || opening.name == "embed" else { index += 1; continue }
+
+      result += html[cursor..<opening.range.lowerBound]
+
+      if opening.name == "embed" || opening.selfClosing {
+        cursor = opening.range.upperBound
+        index += 1
+        continue
+      }
+
+      var depth = 1
+      var scan = index + 1
+      var end: String.Index?
+      while scan < matches.count {
+        defer { scan += 1 }
+        guard let next = details(matches[scan]), next.name == opening.name else { continue }
+        if isRawText {
+          if next.closing { end = next.range.upperBound; break }
+        } else if next.closing {
+          depth -= 1
+          if depth == 0 { end = next.range.upperBound; break }
+        } else if !next.selfClosing {
+          depth += 1
+        }
+      }
+
+      if let end {
+        cursor = end
+        index = scan + 1
+      } else {
+        cursor = html.endIndex
+        index = matches.count
+      }
+    }
+
+    if cursor < html.endIndex { result += html[cursor...] }
     return result
   }
 

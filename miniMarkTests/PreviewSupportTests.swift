@@ -532,4 +532,25 @@ final class PreviewSupportTests: XCTestCase {
       XCTAssertTrue(part.hasPrefix(" nonce=\""), "script tag without a nonce")
     }
   }
+
+  func testNestedActiveElementsRemoveEverythingInsideThem() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<div><svg><svg></svg><p>must disappear</p></svg><p>kept</p></div>",
+      baseURL: nil
+    )
+
+    XCTAssertFalse(html.contains("must disappear"))
+    XCTAssertTrue(html.contains("<p>kept</p>"))
+  }
+
+  func testUnclosedActiveElementRemovesTheRestOfTheBlock() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<div><p>before</p><script>alert(1)<p>after</p></div>",
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains("<p>before</p>"))
+    XCTAssertFalse(html.contains("alert(1)"))
+    XCTAssertFalse(html.contains("after"))
+  }
 }
