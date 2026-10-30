@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs on the M3 as the logged-in desktop user (it opens windows).
-# 1. Runs the unit tests.  2. Builds the app and has it draw its own window to
-# 2880x1800 PNGs (no screen capture).  Everything lands in build/m3-run/.
+# 1. Builds the tests and runs each test class with a time limit, so one hung test
+#    cannot hold the whole run.  2. Builds the app with the screenshot mode and has it
+#    draw its own window to 2880x1800 PNGs (no screen capture).  Output: build/m3-run/.
 set -uo pipefail
 
 # The run helper executes a copy of this script from its own folder, with the repo as the working directory.
@@ -13,15 +14,43 @@ rm -rf "$OUT"
 mkdir -p "$OUT/screenshots"
 cd "$ROOT"
 
+# Run a command, kill it after $1 seconds. Prints "TIMEOUT" and returns 124 if it had to.
+run_limited() {
+  local limit="$1"; shift
+  "$@" &
+  local pid=$!
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( waited >= limit )); then
+      pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null; sleep 1; kill -9 "$pid" 2>/dev/null
+      echo "TIMEOUT after ${limit}s"
+      return 124
+    fi
+    sleep 1; waited=$((waited + 1))
+  done
+  wait "$pid"
+}
+
+echo "git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)" | tee "$OUT/summary.txt"
+
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS" \
-  -derivedDataPath "$DD" -resultBundlePath "$OUT/test.xcresult" CODE_SIGN_IDENTITY=- \
-  test > "$OUT/test.log" 2>&1
-TEST_STATUS=$?
-{
-  echo "git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)"
-  echo "test exit status: $TEST_STATUS"
-  grep -E "Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)|error:" "$OUT/test.log" | tail -n 20
-} | tee "$OUT/summary.txt"
+  -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- build-for-testing > "$OUT/build-for-testing.log" 2>&1
+echo "build-for-testing exit: $?" | tee -a "$OUT/summary.txt"
+
+STATUS=0
+for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests MarkdownExportTests PreviewSupportTests; do
+  run_limited 180 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS" \
+    -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- test-without-building \
+    -only-testing:"miniMarkTests/$cls" > "$OUT/test-$cls.log" 2>&1
+  code=$?
+  passed=$(grep -c "passed on" "$OUT/test-$cls.log")
+  failed=$(grep -c "failed on" "$OUT/test-$cls.log")
+  echo "$cls: exit $code, passed $passed, failed $failed" | tee -a "$OUT/summary.txt"
+  grep -E "failed on|error:|TIMEOUT" "$OUT/test-$cls.log" | head -n 8 | tee -a "$OUT/summary.txt"
+  last=$(grep -E "Test case '.*' started" "$OUT/test-$cls.log" | tail -n 1)
+  [[ $code -ne 0 ]] && echo "  last started: $last" | tee -a "$OUT/summary.txt"
+  [[ $code -ne 0 ]] && STATUS=1
+done
 
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release \
   -destination "platform=macOS" -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- \
@@ -29,14 +58,12 @@ xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release \
   build > "$OUT/build.log" 2>&1 || { echo "release build failed; see build.log" | tee -a "$OUT/summary.txt"; exit 1; }
 
 APP="$DD/Build/Products/Release/miniMark.app"
-"$APP/Contents/MacOS/miniMark" --snapshot minimark-shots > "$OUT/snapshot.log" 2>&1 &
-PID=$!
-for _ in $(seq 1 120); do
-  kill -0 "$PID" 2>/dev/null || break
-  sleep 1
-done
-kill "$PID" 2>/dev/null || true
+{
+  echo "release binary:"
+  lipo -archs "$APP/Contents/MacOS/miniMark" 2>&1
+} | tee -a "$OUT/summary.txt"
 
+run_limited 150 "$APP/Contents/MacOS/miniMark" --snapshot minimark-shots > "$OUT/snapshot.log" 2>&1
 SHOTS="$(sed -n 's/^snapshot-output: //p' "$OUT/snapshot.log" | tail -n 1)"
 if [[ -n "$SHOTS" && -d "$SHOTS" ]]; then
   cp "$SHOTS"/*.png "$OUT/screenshots/" 2>/dev/null || true
@@ -51,4 +78,4 @@ fi
 } | tee -a "$OUT/summary.txt"
 
 rm -rf "$DD"
-exit "$TEST_STATUS"
+exit "$STATUS"
