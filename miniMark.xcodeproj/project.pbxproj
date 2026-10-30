@@ -23,6 +23,7 @@
 		A00000000000000000000114 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000215 /* Assets.xcassets */; };
 		A00000000000000000000115 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000216 /* PrivacyInfo.xcprivacy */; };
 		A00000000000000000000118 /* Mermaid in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000220 /* Mermaid */; };
+		A00000000000000000000140 /* Math in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000240 /* Math */; };
 		A00000000000000000000116 /* MarkdownExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000218 /* MarkdownExport.swift */; };
 		A00000000000000000000117 /* MarkdownFolderAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000219 /* MarkdownFolderAccess.swift */; };
 		A00000000000000000000121 /* MarkdownDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000221 /* MarkdownDocumentTests.swift */; };
@@ -67,6 +68,7 @@
 		A00000000000000000000218 /* MarkdownExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownExport.swift; sourceTree = "<group>"; };
 		A00000000000000000000219 /* MarkdownFolderAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFolderAccess.swift; sourceTree = "<group>"; };
 		A00000000000000000000220 /* Mermaid */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Mermaid; sourceTree = "<group>"; };
+		A00000000000000000000240 /* Math */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Math; sourceTree = "<group>"; };
 		A00000000000000000000221 /* MarkdownDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocumentTests.swift; sourceTree = "<group>"; };
 		A00000000000000000000222 /* MarkdownFormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormattingTests.swift; sourceTree = "<group>"; };
 		A00000000000000000000223 /* DocumentStatsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStatsTests.swift; sourceTree = "<group>"; };
@@ -194,6 +196,7 @@
 				A00000000000000000000216 /* PrivacyInfo.xcprivacy */,
 				A00000000000000000000215 /* Assets.xcassets */,
 				A00000000000000000000220 /* Mermaid */,
+				A00000000000000000000240 /* Math */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -323,6 +326,7 @@
 				A00000000000000000000114 /* Assets.xcassets in Resources */,
 				A00000000000000000000115 /* PrivacyInfo.xcprivacy in Resources */,
 				A00000000000000000000118 /* Mermaid in Resources */,
+				A00000000000000000000140 /* Math in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -59,9 +59,11 @@ struct MarkdownPreviewHTMLRenderer {
     let baseElement = baseURL.map { #"<base href="\#($0.absoluteString)">"# } ?? ""
     let bodyClass = mode.isPreview ? "" : #" class="export-document""#
     let exportStyles = mode.isPreview ? "" : (mode.isRichText ? richTextDocumentStyles : exportDocumentStyles)
+    let hasMath = !mode.isRichText && (body.contains("class=\"math-inline\"") || body.contains("class=\"math-block\""))
     let script = [
       mode.isPreview ? copyButtonScript : "",
-      mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : ""
+      mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : "",
+      hasMath ? (mathAssets ?? "") : ""
     ]
     .filter { !$0.isEmpty }
     .joined(separator: "\n")
@@ -173,6 +175,12 @@ struct MarkdownPreviewHTMLRenderer {
         li.task-list-item input {
           margin: 0 0.4em 0 0;
           vertical-align: baseline;
+        }
+
+        .math-block {
+          margin: 1em 0;
+          overflow-x: auto;
+          text-align: center;
         }
 
         sup.footnote-ref {
@@ -773,6 +781,14 @@ struct MarkdownPreviewHTMLRenderer {
         continue
       }
 
+      if let math = mathBlock(from: lines, startingAt: index) {
+        flushParagraph()
+        closeList()
+        output.append(mathBlockHTML(tex: math.tex, mode: mode))
+        index = math.nextIndex
+        continue
+      }
+
       if isRawHTMLBlockStart(trimmed) {
         flushParagraph()
         closeList()
@@ -1266,8 +1282,19 @@ struct MarkdownPreviewHTMLRenderer {
   ) -> String {
     var html = escapeHTML(markdown)
 
+    // Code spans and math are swapped for placeholders so the emphasis and
+    // link rules below cannot rewrite their contents.
+    var protectedSegments: [String] = []
+    func protect(_ segment: String) -> String {
+      protectedSegments.append(segment)
+      return "\u{E000}\(protectedSegments.count - 1)\u{E001}"
+    }
+
     html = replacingMatches(in: html, pattern: #"`([^`]+)`"#) { match in
-      "<code>\(match.capture(1, in: html) ?? "")</code>"
+      protect("<code>\(match.capture(1, in: html) ?? "")</code>")
+    }
+    html = replacingMatches(in: html, pattern: #"(?<![\\$\d])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)"#) { match in
+      protect(inlineMathHTML(escapedTeX: match.capture(1, in: html) ?? "", mode: mode))
     }
     html = replacingMatches(in: html, pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#) { match in
       let alt = match.capture(1, in: html) ?? ""
@@ -1292,7 +1319,7 @@ struct MarkdownPreviewHTMLRenderer {
     }
 
     if let footnotes {
-      html = replacingMatches(in: html, pattern: #"\[\^([^\]\s]+)\](?![^<]*</code>)"#) { match in
+      html = replacingMatches(in: html, pattern: #"\[\^([^\]\s]+)\]"#) { match in
         guard
           let id = match.capture(1, in: html),
           let number = footnotes.number(for: id)
@@ -1307,8 +1334,93 @@ struct MarkdownPreviewHTMLRenderer {
       }
     }
 
-    return html
+    return replacingMatches(in: html, pattern: "\u{E000}(\\d+)\u{E001}") { match in
+      guard
+        let text = match.capture(1, in: html),
+        let index = Int(text),
+        protectedSegments.indices.contains(index)
+      else {
+        return match.capture(0, in: html) ?? ""
+      }
+      return protectedSegments[index]
+    }
   }
+
+  private static func inlineMathHTML(escapedTeX: String, mode: RenderMode) -> String {
+    if mode.isRichText {
+      return "<span class=\"math-inline\">$\(escapedTeX)$</span>"
+    }
+    let tex = escapeHTMLAttribute(unescapeHTMLAttribute(escapedTeX))
+    return "<span class=\"math-inline\" data-tex=\"\(tex)\">$\(escapedTeX)$</span>"
+  }
+
+  private static func mathBlockHTML(tex: String, mode: RenderMode) -> String {
+    if mode.isRichText {
+      return "<p class=\"math-block\">$$\(escapeHTML(tex))$$</p>"
+    }
+    return "<div class=\"math-block\" data-tex=\"\(escapeHTMLAttribute(tex))\">$$\(escapeHTML(tex))$$</div>"
+  }
+
+  /// A `$$ ... $$` display block starting at `index`, on one line or spanning lines.
+  private static func mathBlock(
+    from lines: [String],
+    startingAt index: Int
+  ) -> (tex: String, nextIndex: Int)? {
+    let first = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+    guard first.hasPrefix("$$") else { return nil }
+
+    let afterOpening = String(first.dropFirst(2))
+    if afterOpening.hasSuffix("$$"), afterOpening.count >= 2 {
+      let tex = String(afterOpening.dropLast(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+      return tex.isEmpty ? nil : (tex, index + 1)
+    }
+
+    var parts = [afterOpening]
+    var cursor = index + 1
+    while cursor < lines.count {
+      let trimmed = lines[cursor].trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.hasSuffix("$$") {
+        parts.append(String(trimmed.dropLast(2)))
+        let tex = parts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return tex.isEmpty ? nil : (tex, cursor + 1)
+      }
+      if trimmed.isEmpty { return nil }
+      parts.append(trimmed)
+      cursor += 1
+    }
+    return nil
+  }
+
+  private static let mathAssets: String? = {
+    func text(_ name: String, _ ext: String) -> String? {
+      let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Math")
+        ?? Bundle.main.url(forResource: name, withExtension: ext)
+      return url.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+
+    guard let script = text("katex.min", "js"), let styles = text("katex.inline.min", "css") else {
+      return nil
+    }
+
+    return """
+      <style>\(styles)</style>
+      <script>
+        \(script)
+        (function () {
+          if (!window.katex) { return; }
+          document.querySelectorAll('.math-inline, .math-block').forEach(function (element) {
+            try {
+              katex.render(element.getAttribute('data-tex') || '', element, {
+                throwOnError: false,
+                strict: false,
+                displayMode: element.classList.contains('math-block')
+              });
+            } catch (error) {}
+          });
+        })();
+      </script>
+    """
+  }()
 
   private static func escapeHTML(_ text: String) -> String {
     text

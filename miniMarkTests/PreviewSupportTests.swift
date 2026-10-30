@@ -374,4 +374,53 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertTrue(html.contains("<code>[^a]</code>"))
     XCTAssertTrue(html.contains(#"<section class="footnotes">"#))
   }
+
+  func testInlineMathIsMarkedForKaTeXAndNotEmphasized() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: #"Euler: $e^{i\pi}+1=0$ and $a*b*c$"#,
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains(#"data-tex="e^{i\pi}+1=0""#))
+    XCTAssertTrue(html.contains(#"data-tex="a*b*c""#))
+    XCTAssertFalse(html.contains("<em>b</em>"))
+  }
+
+  func testCurrencyAmountsAreNotTreatedAsMath() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "It costs $5 and $10 today.", baseURL: nil)
+
+    XCTAssertFalse(html.contains(#"class="math-inline""#))
+    XCTAssertTrue(html.contains("It costs $5 and $10 today."))
+  }
+
+  func testDisplayMathBlocksRenderOnOneLineAndAcrossLines() {
+    let markdown = """
+    $$x^2$$
+
+    $$
+    a + b
+    = c
+    $$
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertEqual(html.components(separatedBy: #"class="math-block" data-tex="#).count - 1, 2)
+    XCTAssertTrue(html.contains(#"data-tex="x^2""#))
+    XCTAssertTrue(html.contains("a + b\n= c"))
+  }
+
+  func testMathInsideCodeSpanStaysCode() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "Write `$x$` in code.", baseURL: nil)
+
+    XCTAssertTrue(html.contains("<code>$x$</code>"))
+    XCTAssertFalse(html.contains(#"class="math-inline""#))
+  }
+
+  func testRichTextMathKeepsPlainDelimiters() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "Inline $x^2$ here.", baseURL: nil, mode: .richText)
+
+    XCTAssertTrue(html.contains("$x^2$"))
+    XCTAssertFalse(html.contains("data-tex"))
+  }
 }
