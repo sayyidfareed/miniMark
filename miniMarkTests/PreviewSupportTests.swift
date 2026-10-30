@@ -303,4 +303,75 @@ final class PreviewSupportTests: XCTestCase {
     let highlighter = HighlightrCodeSyntaxHighlighter(themeName: "xcode")
     _ = highlighter.highlightCode("let value = 42", language: "swift")
   }
+
+  func testStrikethroughRendersDeletedText() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "This is ~~old~~ text", baseURL: nil)
+
+    XCTAssertTrue(html.contains("<del>old</del>"))
+  }
+
+  func testTaskListsRenderCheckboxes() {
+    let markdown = """
+    - [x] Done
+    - [ ] Open
+    - Plain item
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains(#"<li class="task-list-item"><input type="checkbox" checked disabled> Done</li>"#))
+    XCTAssertTrue(html.contains(#"<li class="task-list-item"><input type="checkbox" disabled> Open</li>"#))
+    XCTAssertTrue(html.contains("<li>Plain item</li>"))
+  }
+
+  func testTaskListsUseGlyphsInRichText() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "- [x] Done\n- [ ] Open",
+      baseURL: nil,
+      mode: .richText
+    )
+
+    XCTAssertTrue(html.contains("\u{2611} Done"))
+    XCTAssertTrue(html.contains("\u{2610} Open"))
+    XCTAssertFalse(html.contains("<input"))
+  }
+
+  func testFootnotesRenderNumberedReferencesAndNotes() throws {
+    let markdown = """
+    First claim.[^a] Second claim.[^b]
+
+    [^b]: Second note.
+    [^a]: First note
+        continues here.
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains(#"<section class="footnotes">"#))
+    XCTAssertTrue(html.contains(#"id="fnref-a""#))
+    XCTAssertTrue(html.contains("First note continues here."))
+    let first = try XCTUnwrap(html.range(of: #"id="fn-a""#))
+    let second = try XCTUnwrap(html.range(of: #"id="fn-b""#))
+    XCTAssertLessThan(first.lowerBound, second.lowerBound)
+  }
+
+  func testUnknownFootnoteReferenceStaysLiteral() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "No note here.[^missing]", baseURL: nil)
+
+    XCTAssertTrue(html.contains("[^missing]"))
+    XCTAssertFalse(html.contains(#"<section class="footnotes">"#))
+  }
+
+  func testFootnoteMarkerInsideCodeSpanStaysLiteral() {
+    let markdown = """
+    Use `[^a]` for notes.[^a]
+
+    [^a]: A note.
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains("<code>[^a]</code>"))
+    XCTAssertTrue(html.contains(#"<section class="footnotes">"#))
+  }
 }

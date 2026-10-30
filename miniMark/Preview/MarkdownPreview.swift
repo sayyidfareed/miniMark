@@ -165,6 +165,33 @@ struct MarkdownPreviewHTMLRenderer {
           margin-top: 2px;
         }
 
+        li.task-list-item {
+          list-style: none;
+          margin-left: -1.4em;
+        }
+
+        li.task-list-item input {
+          margin: 0 0.4em 0 0;
+          vertical-align: baseline;
+        }
+
+        sup.footnote-ref {
+          font-size: 0.75em;
+          line-height: 0;
+        }
+
+        section.footnotes {
+          margin-top: 2em;
+          font-size: 0.9em;
+          color: var(--muted);
+        }
+
+        section.footnotes hr {
+          border: 0;
+          border-top: 1px solid var(--border);
+          margin: 0 0 0.8em;
+        }
+
         a {
           color: var(--link);
           text-decoration: none;
@@ -687,9 +714,12 @@ struct MarkdownPreviewHTMLRenderer {
     baseURL: URL?,
     mode: RenderMode
   ) -> String {
-    let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+    let normalizedLines = markdown.replacingOccurrences(of: "\r\n", with: "\n")
       .replacingOccurrences(of: "\r", with: "\n")
       .components(separatedBy: "\n")
+    let extracted = extractFootnoteDefinitions(from: normalizedLines)
+    let lines = extracted.lines
+    let footnotes = FootnoteIndex(definitions: extracted.definitions)
 
     var output: [String] = []
     var paragraph: [String] = []
@@ -706,7 +736,7 @@ struct MarkdownPreviewHTMLRenderer {
     func flushParagraph() {
       guard !paragraph.isEmpty else { return }
       output.append(
-        "<p>\(renderInline(paragraph.joined(separator: " "), baseURL: baseURL, mode: mode))</p>"
+        "<p>\(renderInline(paragraph.joined(separator: " "), baseURL: baseURL, mode: mode, footnotes: footnotes))</p>"
       )
       paragraph.removeAll()
     }
@@ -763,7 +793,7 @@ struct MarkdownPreviewHTMLRenderer {
       if let heading = markdownHeading(from: trimmed) {
         flushParagraph()
         closeList()
-        output.append("<h\(heading.level)>\(renderInline(heading.text, baseURL: baseURL, mode: mode))</h\(heading.level)>")
+        output.append("<h\(heading.level)>\(renderInline(heading.text, baseURL: baseURL, mode: mode, footnotes: footnotes))</h\(heading.level)>")
         index += 1
         continue
       }
@@ -775,7 +805,14 @@ struct MarkdownPreviewHTMLRenderer {
           listKind = "ul"
           output.append("<ul>")
         }
-        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode))</li>")
+        if let task = taskListItem(from: item) {
+          let box = taskCheckbox(checked: task.checked, mode: mode)
+          output.append(
+            "<li class=\"task-list-item\">\(box) \(renderInline(task.text, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>"
+          )
+        } else {
+          output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>")
+        }
         index += 1
         continue
       }
@@ -787,7 +824,7 @@ struct MarkdownPreviewHTMLRenderer {
           listKind = "ol"
           output.append("<ol>")
         }
-        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode))</li>")
+        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>")
         index += 1
         continue
       }
@@ -796,7 +833,7 @@ struct MarkdownPreviewHTMLRenderer {
         flushParagraph()
         closeList()
         let quote = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        output.append("<blockquote><p>\(renderInline(String(quote), baseURL: baseURL, mode: mode))</p></blockquote>")
+        output.append("<blockquote><p>\(renderInline(String(quote), baseURL: baseURL, mode: mode, footnotes: footnotes))</p></blockquote>")
         index += 1
         continue
       }
@@ -812,7 +849,113 @@ struct MarkdownPreviewHTMLRenderer {
     flushParagraph()
     closeList()
 
+    if !footnotes.order.isEmpty {
+      let items = footnotes.order.map { id -> String in
+        let anchor = footnoteAnchor(for: id)
+        let text = renderInline(footnotes.definitions[id] ?? "", baseURL: baseURL, mode: mode)
+        let back = footnoteLink(
+          anchor: "fnref-\(anchor)",
+          label: "↩",
+          className: "footnote-backref"
+        )
+        return "<li id=\"fn-\(anchor)\">\(text) \(back)</li>"
+      }
+      output.append(
+        "<section class=\"footnotes\"><hr><ol>\n\(items.joined(separator: "\n"))\n</ol></section>"
+      )
+    }
+
     return output.joined(separator: "\n")
+  }
+
+  private final class FootnoteIndex {
+    let definitions: [String: String]
+    private(set) var order: [String] = []
+
+    init(definitions: [String: String]) {
+      self.definitions = definitions
+    }
+
+    func number(for id: String) -> Int? {
+      guard definitions[id] != nil else { return nil }
+      if let existing = order.firstIndex(of: id) { return existing + 1 }
+      order.append(id)
+      return order.count
+    }
+  }
+
+  /// Pulls `[^id]: text` definitions out of the document, skipping fenced code.
+  private static func extractFootnoteDefinitions(
+    from lines: [String]
+  ) -> (lines: [String], definitions: [String: String]) {
+    var remaining: [String] = []
+    var definitions: [String: String] = [:]
+    var inFence = false
+    var currentID: String?
+
+    for line in lines {
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+      if trimmed.hasPrefix("```") {
+        inFence.toggle()
+        currentID = nil
+        remaining.append(line)
+        continue
+      }
+
+      if inFence {
+        remaining.append(line)
+        continue
+      }
+
+      if
+        let match = firstMatch(in: trimmed, pattern: #"^\[\^([^\]\s]+)\]:\s*(.*)$"#),
+        let id = match.capture(1, in: trimmed)
+      {
+        definitions[id] = match.capture(2, in: trimmed) ?? ""
+        currentID = id
+        continue
+      }
+
+      if let id = currentID, !trimmed.isEmpty, line.hasPrefix("    ") || line.hasPrefix("\t") {
+        definitions[id, default: ""] += " " + trimmed
+        continue
+      }
+
+      currentID = nil
+      remaining.append(line)
+    }
+
+    return (remaining, definitions)
+  }
+
+  private static func footnoteAnchor(for id: String) -> String {
+    String(id.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "-" })
+  }
+
+  private static func footnoteLink(anchor: String, label: String, className: String) -> String {
+    let target = anchor.hasPrefix("fnref-") ? anchor : "fn-\(anchor)"
+    let script = "var t=document.getElementById('\(target)');if(t){t.scrollIntoView();}return false;"
+    return "<a class=\"\(className)\" href=\"#\(target)\" onclick=\"\(script)\">\(label)</a>"
+  }
+
+  private static func taskListItem(from item: String) -> (checked: Bool, text: String)? {
+    guard
+      let match = firstMatch(in: item, pattern: #"^\[([ x])\]\s+(.+)$"#),
+      let marker = match.capture(1, in: item),
+      let text = match.capture(2, in: item)
+    else { return nil }
+
+    return (marker.lowercased() == "x", text)
+  }
+
+  private static func taskCheckbox(checked: Bool, mode: RenderMode) -> String {
+    if mode.isRichText {
+      return checked ? "\u{2611}" : "\u{2610}"
+    }
+    return checked
+      ? "<input type=\"checkbox\" checked disabled>"
+      : "<input type=\"checkbox\" disabled>"
   }
 
   private static func renderCodeBlock(language: String, content: String, mode: RenderMode) -> String {
@@ -1118,7 +1261,8 @@ struct MarkdownPreviewHTMLRenderer {
     _ markdown: String,
     baseURL: URL?,
     mode: RenderMode,
-    imageWidth: Int? = nil
+    imageWidth: Int? = nil,
+    footnotes: FootnoteIndex? = nil
   ) -> String {
     var html = escapeHTML(markdown)
 
@@ -1142,6 +1286,25 @@ struct MarkdownPreviewHTMLRenderer {
     }
     html = replacingMatches(in: html, pattern: #"(?<!\*)\*([^*]+)\*(?!\*)"#) { match in
       "<em>\(match.capture(1, in: html) ?? "")</em>"
+    }
+    html = replacingMatches(in: html, pattern: #"~~([^~]+)~~"#) { match in
+      "<del>\(match.capture(1, in: html) ?? "")</del>"
+    }
+
+    if let footnotes {
+      html = replacingMatches(in: html, pattern: #"\[\^([^\]\s]+)\](?![^<]*</code>)"#) { match in
+        guard
+          let id = match.capture(1, in: html),
+          let number = footnotes.number(for: id)
+        else {
+          return match.capture(0, in: html) ?? ""
+        }
+
+        let anchor = footnoteAnchor(for: id)
+        let link = footnoteLink(anchor: anchor, label: "\(number)", className: "footnote-link")
+          .replacingOccurrences(of: "<a ", with: "<a id=\"fnref-\(anchor)\" ")
+        return "<sup class=\"footnote-ref\">\(link)</sup>"
+      }
     }
 
     return html
