@@ -61,8 +61,10 @@ struct MarkdownPreviewHTMLRenderer {
     let exportStyles = mode.isPreview ? "" : (mode.isRichText ? richTextDocumentStyles : exportDocumentStyles)
     let hasMath = !mode.isRichText && (body.contains("class=\"math-inline\"") || body.contains("class=\"math-block\""))
     let hasHighlightableCode = !mode.isRichText && body.contains("<code class=\"language-")
+    let hasFootnoteLinks = !mode.isRichText && body.contains("data-scroll=")
     let script = [
       mode.isPreview ? copyButtonScript : "",
+      hasFootnoteLinks ? footnoteScript : "",
       mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : "",
       hasMath ? (mathAssets ?? "") : "",
       hasHighlightableCode ? (highlightAssets ?? "") : ""
@@ -75,6 +77,7 @@ struct MarkdownPreviewHTMLRenderer {
     <html>
     <head>
       <meta charset="utf-8">
+      <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       \(baseElement)
       <style>
@@ -430,6 +433,27 @@ struct MarkdownPreviewHTMLRenderer {
     """
   }
 
+  /// Only scripts that carry this per-launch value may run, so scripts written into a
+  /// document (raw HTML) are blocked even if one slipped past the sanitizer.
+  private static let scriptNonce = UUID().uuidString
+
+  private static let contentSecurityPolicy =
+    "default-src 'none'; script-src 'nonce-\(scriptNonce)' 'unsafe-eval'; "
+    + "style-src 'unsafe-inline'; img-src data: http: https: file:; font-src data:; "
+    + "connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'"
+
+  private static let footnoteScript = """
+      <script nonce="\(scriptNonce)">
+        document.addEventListener('click', function (event) {
+          var link = event.target.closest('a[data-scroll]');
+          if (!link) return;
+          event.preventDefault();
+          var target = document.getElementById(link.getAttribute('data-scroll'));
+          if (target) target.scrollIntoView();
+        });
+      </script>
+  """
+
   private static let exportDocumentStyles = """
         .export-document {
           --text: #111111;
@@ -610,7 +634,7 @@ struct MarkdownPreviewHTMLRenderer {
   """
 
   private static let copyButtonScript = """
-      <script>
+      <script nonce="\(scriptNonce)">
         (function () {
           document.addEventListener('click', function (event) {
             var button = event.target.closest('.codeblock-copy');
@@ -666,7 +690,7 @@ struct MarkdownPreviewHTMLRenderer {
     guard let source = mermaidTinySource else { return "" }
 
     return """
-      <script>
+      <script nonce="\(scriptNonce)">
         \(source)
         (function () {
           document.body.dataset.mermaidReady = 'pending';
@@ -953,8 +977,7 @@ struct MarkdownPreviewHTMLRenderer {
 
   private static func footnoteLink(anchor: String, label: String, className: String) -> String {
     let target = anchor.hasPrefix("fnref-") ? anchor : "fn-\(anchor)"
-    let script = "var t=document.getElementById('\(target)');if(t){t.scrollIntoView();}return false;"
-    return "<a class=\"\(className)\" href=\"#\(target)\" onclick=\"\(script)\">\(label)</a>"
+    return "<a class=\"\(className)\" href=\"#\(target)\" data-scroll=\"\(target)\">\(label)</a>"
   }
 
   private static func taskListItem(from item: String) -> (checked: Bool, text: String)? {
@@ -1211,8 +1234,9 @@ struct MarkdownPreviewHTMLRenderer {
     return (block.joined(separator: "\n"), nextIndex)
   }
 
-  private static func renderRawHTML(_ html: String, baseURL: URL?, mode: RenderMode) -> String {
-    replacingMatches(in: html, pattern: #"<img\b[^>]*\bsrc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)[^>]*>"#) { match in
+  private static func renderRawHTML(_ rawHTML: String, baseURL: URL?, mode: RenderMode) -> String {
+    let html = sanitizeRawHTML(rawHTML)
+    return replacingMatches(in: html, pattern: #"<img\b[^>]*\bsrc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)[^>]*>"#) { match in
       guard let tagRange = Range(match.range, in: html) else { return "" }
       var tag = String(html[tagRange])
       guard
@@ -1237,6 +1261,154 @@ struct MarkdownPreviewHTMLRenderer {
 
       return tag
     }
+  }
+
+  // MARK: Raw HTML sanitizing
+
+  private static let allowedHTMLTags: Set<String> = [
+    "a", "abbr", "b", "blockquote", "br", "caption", "center", "code", "dd", "del", "details", "div",
+    "dl", "dt", "em", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img",
+    "ins", "kbd", "li", "mark", "ol", "p", "picture", "pre", "s", "section", "small", "source",
+    "span", "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr",
+    "u", "ul"
+  ]
+
+  private static let voidHTMLTags: Set<String> = ["br", "hr", "img", "source"]
+
+  private static let globalHTMLAttributes: Set<String> = ["align", "title", "lang", "dir"]
+
+  private static let tagHTMLAttributes: [String: Set<String>] = [
+    "a": ["href"],
+    "img": ["src", "alt", "width", "height"],
+    "source": ["srcset", "media", "type"],
+    "td": ["colspan", "rowspan", "valign", "width"],
+    "th": ["colspan", "rowspan", "valign", "width"],
+    "table": ["width"],
+    "details": ["open"],
+    "ol": ["start", "type"],
+    "li": ["value"]
+  ]
+
+  /// Keeps README-style block HTML (headings, images, tables, details) and drops everything
+  /// else: scripts and styles with their contents, unknown tags (shown as text), event
+  /// handlers, inline styles, and any link or image address that is not http, https,
+  /// mailto, a relative path, or an embedded image.
+  private static func sanitizeRawHTML(_ html: String) -> String {
+    let withoutActiveElements = replacingMatches(
+      in: html,
+      pattern: #"<(script|style|iframe|object|embed|noscript|template|form|svg)\b.*?</\1\s*>"#,
+      options: [.caseInsensitive, .dotMatchesLineSeparators]
+    ) { _ in "" }
+
+    let regex = regularExpression(for: #"<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>"#)
+    var result = ""
+    var cursor = withoutActiveElements.startIndex
+
+    for match in regex.matches(in: withoutActiveElements, range: NSRange(withoutActiveElements.startIndex..., in: withoutActiveElements)) {
+      guard let range = Range(match.range, in: withoutActiveElements) else { continue }
+      result += withoutActiveElements[cursor..<range.lowerBound].replacingOccurrences(of: "<", with: "&lt;")
+
+      let isClosing = match.capture(1, in: withoutActiveElements) == "/"
+      let name = (match.capture(2, in: withoutActiveElements) ?? "").lowercased()
+      if allowedHTMLTags.contains(name) {
+        if isClosing {
+          result += voidHTMLTags.contains(name) ? "" : "</\(name)>"
+        } else {
+          let attributes = sanitizedAttributes(match.capture(3, in: withoutActiveElements) ?? "", tag: name)
+          result += "<\(name)\(attributes)>"
+        }
+      } else {
+        result += escapeHTML(String(withoutActiveElements[range]))
+      }
+      cursor = range.upperBound
+    }
+
+    result += withoutActiveElements[cursor...].replacingOccurrences(of: "<", with: "&lt;")
+    return result
+  }
+
+  private static func sanitizedAttributes(_ raw: String, tag: String) -> String {
+    let allowed = globalHTMLAttributes.union(tagHTMLAttributes[tag] ?? [])
+    let regex = regularExpression(
+      for: #"([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>=`]+)))?"#
+    )
+    var output = ""
+
+    for match in regex.matches(in: raw, range: NSRange(raw.startIndex..., in: raw)) {
+      let name = (match.capture(1, in: raw) ?? "").lowercased()
+      guard allowed.contains(name) else { continue }
+
+      let rawValue = match.capture(2, in: raw) ?? match.capture(3, in: raw) ?? match.capture(4, in: raw)
+      guard let rawValue else {
+        if name == "open" { output += " open" }
+        continue
+      }
+
+      let value = decodingHTMLEntities(rawValue)
+      switch name {
+      case "href":
+        guard isSafeURL(value, schemes: ["http", "https", "mailto"], allowImageData: false) else { continue }
+      case "src":
+        guard isSafeURL(value, schemes: ["http", "https"], allowImageData: true) else { continue }
+      case "srcset":
+        let candidates = value.split(separator: ",").map {
+          String($0).trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first.map(String.init) ?? ""
+        }
+        guard candidates.allSatisfy({ isSafeURL($0, schemes: ["http", "https"], allowImageData: true) }) else { continue }
+      case "title", "alt", "lang", "dir", "align", "valign", "media", "type":
+        break
+      default:
+        guard value.range(of: #"^[0-9a-zA-Z%.\- ]{0,40}$"#, options: .regularExpression) != nil else { continue }
+      }
+
+      output += " \(name)=\"\(escapeHTMLAttribute(value))\""
+    }
+
+    return output
+  }
+
+  private static func decodingHTMLEntities(_ text: String) -> String {
+    var result = replacingMatches(in: text, pattern: #"&#x([0-9a-f]+);?"#) { match in
+      scalarString(match.capture(1, in: text), radix: 16)
+    }
+    let afterHex = result
+    result = replacingMatches(in: afterHex, pattern: #"&#([0-9]+);?"#) { match in
+      scalarString(match.capture(1, in: afterHex), radix: 10)
+    }
+    for (entity, character) in [
+      ("&colon;", ":"), ("&tab;", "\t"), ("&newline;", "\n"), ("&lt;", "<"),
+      ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&amp;", "&")
+    ] {
+      result = result.replacingOccurrences(of: entity, with: character, options: .caseInsensitive)
+    }
+    return result
+  }
+
+  private static func scalarString(_ digits: String?, radix: Int) -> String {
+    guard
+      let digits,
+      let value = UInt32(digits, radix: radix),
+      let scalar = Unicode.Scalar(value)
+    else { return "" }
+    return String(Character(scalar))
+  }
+
+  /// True for relative paths, fragments, and addresses whose scheme is in `schemes`
+  /// (or an embedded raster image when `allowImageData`). Whitespace and control
+  /// characters are ignored when reading the scheme, as browsers do.
+  private static func isSafeURL(_ value: String, schemes: Set<String>, allowImageData: Bool) -> Bool {
+    let cleaned = String(
+      String.UnicodeScalarView(decodingHTMLEntities(value).unicodeScalars.filter { $0.value > 0x20 && $0.value != 0x7F })
+    ).lowercased()
+
+    guard let colon = cleaned.firstIndex(of: ":") else { return true }
+    let scheme = String(cleaned[..<colon])
+    if scheme.contains("/") || scheme.contains("?") || scheme.contains("#") { return true }
+    if schemes.contains(scheme) { return true }
+    if allowImageData, scheme == "data" {
+      return cleaned.range(of: #"^data:image/(png|jpe?g|gif|webp)[;,]"#, options: .regularExpression) != nil
+    }
+    return false
   }
 
   private static func unquotedHTMLAttributeValue(_ source: String) -> String {
@@ -1291,27 +1463,51 @@ struct MarkdownPreviewHTMLRenderer {
     // Code spans and math are swapped for placeholders so the emphasis and
     // link rules below cannot rewrite their contents.
     var protectedSegments: [String] = []
-    func protect(_ segment: String) -> String {
+    var protectedPlain: [String] = []
+    func protect(_ segment: String, plain: String) -> String {
       protectedSegments.append(segment)
+      protectedPlain.append(plain)
       return "\u{E000}\(protectedSegments.count - 1)\u{E001}"
     }
 
+    // Attribute values must never receive the HTML of a protected segment, so they get
+    // the segment's original text instead, decoded once and escaped once.
+    func attributeText(_ text: String) -> String {
+      let plain = replacingMatches(in: text, pattern: "\u{E000}(\\d+)\u{E001}") { match in
+        guard
+          let digits = match.capture(1, in: text),
+          let index = Int(digits),
+          protectedPlain.indices.contains(index)
+        else { return "" }
+        return protectedPlain[index]
+      }
+      return unescapeHTMLAttribute(plain)
+    }
+
     html = replacingMatches(in: html, pattern: #"`([^`]+)`"#) { match in
-      protect("<code>\(match.capture(1, in: html) ?? "")</code>")
+      let inner = match.capture(1, in: html) ?? ""
+      return protect("<code>\(inner)</code>", plain: "`\(inner)`")
     }
     html = replacingMatches(in: html, pattern: #"(?<![\\$\d])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)"#) { match in
-      protect(inlineMathHTML(escapedTeX: match.capture(1, in: html) ?? "", mode: mode))
+      let tex = match.capture(1, in: html) ?? ""
+      return protect(inlineMathHTML(escapedTeX: tex, mode: mode), plain: "$\(tex)$")
     }
     html = replacingMatches(in: html, pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#) { match in
-      let alt = match.capture(1, in: html) ?? ""
-      let source = match.capture(2, in: html) ?? ""
+      let alt = attributeText(match.capture(1, in: html) ?? "")
+      let source = attributeText(match.capture(2, in: html) ?? "")
+      guard isSafeURL(source, schemes: ["http", "https"], allowImageData: true) else {
+        return escapeHTMLAttribute(alt)
+      }
       let previewSource = previewImageSource(for: source, baseURL: baseURL) ?? source
       let sizeAttributes = imageAttributes(for: mode, width: imageWidth)
       return #"<img src="\#(escapeHTMLAttribute(previewSource))" alt="\#(escapeHTMLAttribute(alt))"\#(sizeAttributes)>"#
     }
     html = replacingMatches(in: html, pattern: #"\[([^\]]+)\]\(([^)]+)\)"#) { match in
       let label = match.capture(1, in: html) ?? ""
-      let destination = match.capture(2, in: html) ?? ""
+      let destination = attributeText(match.capture(2, in: html) ?? "")
+      guard isSafeURL(destination, schemes: ["http", "https", "mailto"], allowImageData: false) else {
+        return label
+      }
       return #"<a href="\#(escapeHTMLAttribute(destination))">\#(label)</a>"#
     }
     html = replacingMatches(in: html, pattern: #"\*\*([^*]+)\*\*"#) { match in
@@ -1418,7 +1614,7 @@ struct MarkdownPreviewHTMLRenderer {
         @media (prefers-color-scheme: dark) { \(dark) }
         .codeblock pre code.hljs { background: transparent; padding: 0; }
       </style>
-      <script>
+      <script nonce="\(scriptNonce)">
         \(script)
         (function () {
           if (!window.hljs) { return; }
@@ -1445,7 +1641,7 @@ struct MarkdownPreviewHTMLRenderer {
 
     return """
       <style>\(styles)</style>
-      <script>
+      <script nonce="\(scriptNonce)">
         \(script)
         (function () {
           if (!window.katex) { return; }
@@ -1613,9 +1809,10 @@ struct MarkdownPreviewHTMLRenderer {
   private static func replacingMatches(
     in text: String,
     pattern: String,
+    options: NSRegularExpression.Options = [.caseInsensitive],
     transform: (NSTextCheckingResult) -> String
   ) -> String {
-    let regex = regularExpression(for: pattern)
+    let regex = regularExpression(for: pattern, options: options)
     var result = ""
     var currentIndex = text.startIndex
 
@@ -1630,9 +1827,12 @@ struct MarkdownPreviewHTMLRenderer {
     return result
   }
 
-  private static func regularExpression(for pattern: String) -> NSRegularExpression {
+  private static func regularExpression(
+    for pattern: String,
+    options: NSRegularExpression.Options = [.caseInsensitive]
+  ) -> NSRegularExpression {
     do {
-      return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+      return try NSRegularExpression(pattern: pattern, options: options)
     } catch {
       preconditionFailure("Invalid regular expression: \(pattern)")
     }

@@ -443,4 +443,93 @@ final class PreviewSupportTests: XCTestCase {
 
     XCTAssertTrue(html.contains(#"<code class="language-swift">"#))
   }
+
+  func testLinkDestinationInCodeSpanCannotInjectAttributes() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: #"[x](`" onclick="alert(1)" data-x="`)"#,
+      baseURL: nil
+    )
+
+    XCTAssertFalse(html.contains(#" onclick=""#))
+    XCTAssertFalse(html.contains(#"data-x=""#))
+  }
+
+  func testImageAltInCodeSpanCannotInjectAttributes() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: #"![`" onerror="alert(1)" x="`](a.png)"#,
+      baseURL: nil
+    )
+
+    XCTAssertFalse(html.contains(#" onerror=""#))
+  }
+
+  func testUnsafeMarkdownLinkDestinationsBecomePlainText() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "[click](javascript:alert(1))", baseURL: nil)
+
+    XCTAssertFalse(html.contains(#"href="javascript"#))
+    XCTAssertTrue(html.contains("click"))
+  }
+
+  func testRawHTMLScriptElementsAreRemovedWithTheirContents() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<div><script>alert(1)</script><p>kept</p></div>",
+      baseURL: nil
+    )
+
+    XCTAssertFalse(html.contains("alert(1)"))
+    XCTAssertTrue(html.contains("<p>kept</p>"))
+  }
+
+  func testRawHTMLEventHandlersAndScriptAddressesAreDropped() {
+    let markdown = """
+    <p><img src="x.png" onerror="alert(1)"><a href="javascript:alert(2)" onclick="alert(3)">a</a><a href="java&#x73;cript:alert(4)">b</a><a href=" JaVa\tScRiPt:alert(5)">c</a></p>
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertFalse(html.contains("onerror"))
+    XCTAssertFalse(html.contains("onclick"))
+    XCTAssertFalse(html.lowercased().contains("javascript:"))
+    XCTAssertFalse(html.contains("alert("))
+    XCTAssertTrue(html.contains(#"<img src="x.png""#))
+  }
+
+  func testRawHTMLUnknownTagsAreShownAsText() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "<div><custom x=\"1\">hi</custom></div>", baseURL: nil)
+
+    XCTAssertTrue(html.contains("&lt;custom"))
+    XCTAssertFalse(html.contains("<custom"))
+  }
+
+  func testRawHTMLKeepsReadmeLayoutAttributes() {
+    let markdown = """
+    <details open><summary>More</summary><table width="100%"><tr><td colspan="2" align="center">cell</td></tr></table></details>
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains("<details open>"))
+    XCTAssertTrue(html.contains(#"<table width="100%">"#))
+    XCTAssertTrue(html.contains(#"colspan="2""#))
+  }
+
+  func testPageHasContentSecurityPolicyAndEveryScriptCarriesTheNonce() {
+    let markdown = """
+    ```swift
+    let value = 1
+    ```
+
+    Text.[^a] And $x^2$.
+
+    [^a]: Note.
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertTrue(html.contains("Content-Security-Policy"))
+    XCTAssertTrue(html.contains("script-src 'nonce-"))
+    for part in html.components(separatedBy: "<script").dropFirst() {
+      XCTAssertTrue(part.hasPrefix(" nonce=\""), "script tag without a nonce")
+    }
+  }
 }
