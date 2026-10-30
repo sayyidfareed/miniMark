@@ -10,12 +10,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard !isRunningTests else { return }
 
+#if SNAPSHOT_MODE
     if let directory = SnapshotRunner.outputDirectory(from: ProcessInfo.processInfo.arguments) {
       Task { @MainActor in
         await SnapshotRunner(outputDirectory: directory).run()
       }
       return
     }
+#endif
 
     let savedAppearance = UserDefaults.standard.string(forKey: AppAppearance.storageKey)
       ?? AppAppearance.system.rawValue

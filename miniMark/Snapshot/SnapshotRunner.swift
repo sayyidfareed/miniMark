@@ -1,3 +1,5 @@
+// Compiled only when SNAPSHOT_MODE is set (the screenshot build). Not part of the App Store build.
+#if SNAPSHOT_MODE
 import AppKit
 import SwiftUI
 import WebKit
@@ -157,3 +159,4 @@ private struct SnapshotHost: View {
     .frame(width: 1440, height: 900)
   }
 }
+#endif

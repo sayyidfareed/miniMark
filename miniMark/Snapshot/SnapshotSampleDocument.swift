@@ -1,3 +1,5 @@
+// Compiled only when SNAPSHOT_MODE is set (the screenshot build). Not part of the App Store build.
+#if SNAPSHOT_MODE
 enum SnapshotSampleDocument {
   static let markdown = """
   # Release notes
@@ -40,3 +42,4 @@ enum SnapshotSampleDocument {
   [^price]: Launch price, then a fixed 90-day review.
   """
 }
+#endif

@@ -26,6 +26,15 @@
    ],
    "output": "build/compile-tests.txt",
    "workspace": "persistent:tests"
+  },
+  "compile-snapshot": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_IDENTITY=- SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SNAPSHOT_MODE' build; mkdir -p build; echo ok > build/compile-snapshot.txt"
+   ],
+   "output": "build/compile-snapshot.txt",
+   "workspace": "persistent"
   }
  }
 }

@@ -25,6 +25,7 @@ TEST_STATUS=$?
 
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release \
   -destination "platform=macOS" -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SNAPSHOT_MODE' \
   build > "$OUT/build.log" 2>&1 || { echo "release build failed; see build.log" | tee -a "$OUT/summary.txt"; exit 1; }
 
 APP="$DD/Build/Products/Release/miniMark.app"
