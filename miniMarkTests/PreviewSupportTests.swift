@@ -528,8 +528,10 @@ final class PreviewSupportTests: XCTestCase {
 
     XCTAssertTrue(html.contains("Content-Security-Policy"))
     XCTAssertTrue(html.contains("script-src 'nonce-"))
-    for part in html.components(separatedBy: "<script").dropFirst() {
-      XCTAssertTrue(part.hasPrefix(" nonce=\""), "script tag without a nonce")
+    // Real tags only: a bundled library mentions "<script" inside its own source text, followed by "(".
+    XCTAssertFalse(html.contains("<script>"), "script tag without a nonce")
+    for part in html.components(separatedBy: "<script ").dropFirst() {
+      XCTAssertTrue(part.hasPrefix("nonce=\""), "script tag without a nonce")
     }
   }
 
@@ -545,13 +547,13 @@ final class PreviewSupportTests: XCTestCase {
 
   func testUnclosedActiveElementRemovesTheRestOfTheBlock() {
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(
-      for: "<div><p>before</p><script>alert(1)<p>after</p></div>",
+      for: "<div><p>before</p><script>alert(1)<p>afterxyzmarker</p></div>",
       baseURL: nil
     )
 
     XCTAssertTrue(html.contains("<p>before</p>"))
     XCTAssertFalse(html.contains("alert(1)"))
-    XCTAssertFalse(html.contains("after"))
+    XCTAssertFalse(html.contains("afterxyzmarker"))
   }
 
   func testSelfClosingSyntaxDoesNotSkipRemovalOfRawTextElements() {
@@ -564,11 +566,11 @@ final class PreviewSupportTests: XCTestCase {
       XCTAssertTrue(closed.contains("<p>kept</p>"), "<\(tag)/> removed too much")
 
       let unclosed = MarkdownPreviewHTMLRenderer.htmlDocument(
-        for: "<div><p>before</p><\(tag)/>must disappear<p>after</p></div>",
+        for: "<div><p>before</p><\(tag)/>must disappear<p>afterxyzmarker</p></div>",
         baseURL: nil
       )
       XCTAssertFalse(unclosed.contains("must disappear"), "unclosed <\(tag)/> kept its contents")
-      XCTAssertFalse(unclosed.contains("after"), "unclosed <\(tag)/> did not drop the rest")
+      XCTAssertFalse(unclosed.contains("afterxyzmarker"), "unclosed <\(tag)/> did not drop the rest")
     }
   }
 

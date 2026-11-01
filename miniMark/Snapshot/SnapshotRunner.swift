@@ -54,6 +54,9 @@ final class SnapshotRunner {
     NSApp.terminate(nil)
   }
 
+  private let pixelWidth = 2880
+  private let pixelHeight = 1800
+
   private func capture(name: String, mode: DocumentView.Mode, appearance: NSAppearance.Name) async {
     let document = SnapshotDocumentBox(text: SnapshotSampleDocument.markdown)
     let root = SnapshotHost(box: document, coordinator: coordinator, mode: mode)
@@ -75,23 +78,19 @@ final class SnapshotRunner {
     NSApp.activate(ignoringOtherApps: true)
 
     // Let SwiftUI lay out and the preview load, including Mermaid and KaTeX.
-    try? await Task.sleep(for: .seconds(mode == .preview ? 4 : 1.5))
+    try? await Task.sleep(for: .seconds(mode == .preview ? 5 : 2))
     hosting.layoutSubtreeIfNeeded()
     window.displayIfNeeded()
     log("\(name): visible=\(window.isVisible) occlusion-visible=\(window.occlusionState.contains(.visible)) active=\(NSApp.isActive) webviews=\(webViews(in: hosting).count) bounds=\(hosting.bounds.size)")
 
-    if mode == .preview && webViews(in: hosting).isEmpty {
-      log("\(name): the preview web view never appeared")
-      window.orderOut(nil)
-      return
-    }
-    guard let image = await renderImage(of: hosting, label: name) else {
+    guard let image = await renderImage(of: hosting, in: window, label: name) else {
       log("\(name): no image produced")
       window.orderOut(nil)
       return
     }
 
-    if let data = pngData(from: image) {
+    let rep = NSBitmapImageRep(cgImage: image)
+    if let data = rep.representation(using: .png, properties: [:]) {
       try? data.write(to: outputDirectory.appendingPathComponent("\(name).png"))
     }
     window.orderOut(nil)
@@ -111,27 +110,23 @@ final class SnapshotRunner {
     log("session: screens=\(NSScreen.screens.count) locked=\(locked) onConsole=\(console) policy=\(NSApp.activationPolicy().rawValue)")
   }
 
-  private func newBitmap(for bounds: NSRect) -> NSBitmapImageRep? {
-    guard
-      let rep = NSBitmapImageRep(
-        bitmapDataPlanes: nil,
-        pixelsWide: Int(bounds.width * 2),
-        pixelsHigh: Int(bounds.height * 2),
-        bitsPerSample: 8,
-        samplesPerPixel: 3,
-        hasAlpha: false,
-        isPlanar: false,
-        colorSpaceName: .deviceRGB,
-        bytesPerRow: 0,
-        bitsPerPixel: 0
-      )
-    else { return nil }
-    rep.size = bounds.size
-    return rep
+  /// An opaque 2880x1800 drawing surface. Drawing goes through a CGContext because AppKit refuses
+  /// to make a graphics context from a bitmap without an alpha channel.
+  private func makeContext() -> CGContext? {
+    CGContext(
+      data: nil,
+      width: pixelWidth,
+      height: pixelHeight,
+      bitsPerComponent: 8,
+      bytesPerRow: 0,
+      space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    )
   }
 
   /// True when every sampled pixel is the same colour, which means nothing was drawn.
-  private func isBlank(_ rep: NSBitmapImageRep) -> Bool {
+  private func isBlank(_ image: CGImage) -> Bool {
+    let rep = NSBitmapImageRep(cgImage: image)
     guard let first = rep.colorAt(x: 0, y: 0) else { return true }
     for column in stride(from: 0, to: rep.pixelsWide, by: max(1, rep.pixelsWide / 48)) {
       for row in stride(from: 0, to: rep.pixelsHigh, by: max(1, rep.pixelsHigh / 30)) {
@@ -146,70 +141,100 @@ final class SnapshotRunner {
     return true
   }
 
-  /// Tries several ways to draw the native views and keeps the first that draws something.
-  private func renderNative(of view: NSView, label: String) -> NSBitmapImageRep? {
-    let bounds = view.bounds
-    var attempts: [(String, () -> NSBitmapImageRep?)] = []
+  /// The app's own window as the window server composites it. CGWindowListCreateImage is looked up at
+  /// run time because newer SDKs no longer declare it; asking for one of this app's own windows needs no
+  /// screen-recording permission. The title bar is cropped so the picture matches the 1440x900 content.
+  private func windowImage(of window: NSWindow) -> CGImage? {
+    typealias Function = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+    guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+      log("CGWindowListCreateImage is not available")
+      return nil
+    }
+    let function = unsafeBitCast(symbol, to: Function.self)
+    // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
+    guard let full = function(CGRect.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue() else { return nil }
+    log("window image \(full.width)x\(full.height)")
+    let crop = full.height - pixelHeight
+    guard full.width == pixelWidth, crop >= 0,
+      let content = full.cropping(to: CGRect(x: 0, y: crop, width: pixelWidth, height: pixelHeight))
+    else { return nil }
+    return content
+  }
 
-    attempts.append(("cacheDisplay", {
-      guard let rep = self.newBitmap(for: bounds) else { return nil }
-      view.cacheDisplay(in: bounds, to: rep)
-      return rep
-    }))
-    attempts.append(("cachingRep", {
-      guard let cached = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
-      view.cacheDisplay(in: bounds, to: cached)
-      // Its pixel size follows the screen, so redraw it at the fixed 2x size.
-      guard let rep = self.newBitmap(for: bounds), let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-      NSGraphicsContext.saveGraphicsState()
-      NSGraphicsContext.current = context
-      cached.draw(in: bounds)
-      NSGraphicsContext.restoreGraphicsState()
-      return rep
-    }))
-    attempts.append(("layer.render", {
-      guard let rep = self.newBitmap(for: bounds), let layer = view.layer,
-        let context = NSGraphicsContext(bitmapImageRep: rep)?.cgContext
-      else { return nil }
-      context.scaleBy(x: 2, y: 2)
-      layer.render(in: context)
-      return rep
-    }))
+  /// The native views drawn by AppKit itself (works for classic views, may not for SwiftUI).
+  private func cacheDisplayImage(of view: NSView) -> CGImage? {
+    guard let rep = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: pixelWidth, pixelsHigh: pixelHeight, bitsPerSample: 8,
+      samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+      bytesPerRow: 0, bitsPerPixel: 0
+    ) else { return nil }
+    rep.size = view.bounds.size
+    view.cacheDisplay(in: view.bounds, to: rep)
+    return rep.cgImage
+  }
 
+  private func layerImage(of view: NSView) -> CGImage? {
+    guard let layer = view.layer, let context = makeContext() else { return nil }
+    context.scaleBy(x: 2, y: 2)
+    layer.render(in: context)
+    return context.makeImage()
+  }
+
+  private func pdfImage(of view: NSView) -> CGImage? {
+    let data = view.dataWithPDF(inside: view.bounds)
+    guard let provider = CGDataProvider(data: data as CFData),
+      let document = CGPDFDocument(provider), let page = document.page(at: 1),
+      let context = makeContext()
+    else { return nil }
+    context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    context.scaleBy(x: 2, y: 2)
+    context.drawPDFPage(page)
+    return context.makeImage()
+  }
+
+  /// Tries several ways to draw the window and keeps the first that draws something.
+  private func renderImage(of view: NSView, in window: NSWindow, label: String) async -> CGImage? {
+    // 1. The window as composited by the window server (web content included).
+    if let image = windowImage(of: window) {
+      let blank = isBlank(image)
+      log("\(label): windowList blank=\(blank)")
+      if !blank { return image }
+    }
+
+    // 2. AppKit drawing of the views, with the web views snapshotted and laid on top.
+    let attempts: [(String, () -> CGImage?)] = [
+      ("cacheDisplay", { self.cacheDisplayImage(of: view) }),
+      ("layer.render", { self.layerImage(of: view) }),
+      ("pdf", { self.pdfImage(of: view) })
+    ]
     for (name, attempt) in attempts {
-      guard let rep = attempt() else { log("\(label): \(name) gave no bitmap"); continue }
-      let blank = isBlank(rep)
+      guard let native = attempt() else { log("\(label): \(name) gave no image"); continue }
+      let blank = isBlank(native)
       log("\(label): \(name) blank=\(blank)")
-      if !blank { return rep }
+      if blank { continue }
+      return await addWebViews(to: native, view: view, label: label)
     }
     return nil
   }
 
-  private func renderImage(of view: NSView, label: String) async -> NSBitmapImageRep? {
-    let bounds = view.bounds
-    // No native drawing means no usable picture, so no file is written for it.
-    guard let rep = renderNative(of: view, label: label) else { return nil }
-
-    // Web views are not captured by cacheDisplay, so snapshot and draw them on top.
+  /// Web views are not captured by AppKit drawing, so snapshot them and draw them on top.
+  private func addWebViews(to native: CGImage, view: NSView, label: String) async -> CGImage? {
+    guard let context = makeContext() else { return nil }
+    context.draw(native, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    let graphics = NSGraphicsContext(cgContext: context, flipped: false)
     for webView in webViews(in: view) {
       guard let snapshot = await webSnapshot(of: webView, label: label) else { return nil }
       let frame = webView.convert(webView.bounds, to: view)
       NSGraphicsContext.saveGraphicsState()
-      if let context = NSGraphicsContext(bitmapImageRep: rep) {
-        NSGraphicsContext.current = context
-        let flipped = NSRect(
-          x: frame.minX,
-          y: view.isFlipped ? bounds.height - frame.maxY : frame.minY,
-          width: frame.width,
-          height: frame.height
-        )
-        snapshot.draw(in: flipped)
-      }
+      NSGraphicsContext.current = graphics
+      context.scaleBy(x: 2, y: 2)
+      let y = view.isFlipped ? view.bounds.height - frame.maxY : frame.minY
+      snapshot.draw(in: NSRect(x: frame.minX, y: y, width: frame.width, height: frame.height))
+      context.scaleBy(x: 0.5, y: 0.5)
       NSGraphicsContext.restoreGraphicsState()
     }
-
-    log("\(label): final blank=\(isBlank(rep))")
-    return rep
+    return context.makeImage()
   }
 
   /// Takes a web view snapshot, giving up after ten seconds so one stuck page cannot stall the run.
@@ -239,9 +264,6 @@ final class SnapshotRunner {
     return found
   }
 
-  private func pngData(from rep: NSBitmapImageRep) -> Data? {
-    rep.representation(using: .png, properties: [:])
-  }
 }
 
 private final class SnapshotDocumentBox: ObservableObject {
