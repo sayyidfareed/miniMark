@@ -4,8 +4,6 @@ enum SnapshotSampleDocument {
   static let markdown = """
   # Release notes
 
-  A **small**, native Markdown editor. Write in plain text, preview as you go.
-
   ## This week
 
   - [x] Add strikethrough, task lists and footnotes
@@ -27,11 +25,9 @@ enum SnapshotSampleDocument {
   | Build | Tests | Notes |
   | :-- | --: | :-- |
   | 1.0 | 42 | Math and footnotes |
-  | 1.1 | 48 | Quick Look |
 
   ```swift
   let words = text.split(separator: " ").count
-  print("\\(words) words")
   ```
 
   ```mermaid

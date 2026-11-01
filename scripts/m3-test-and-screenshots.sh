@@ -128,3 +128,4 @@ count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$(basename "$DD")" == "minimark-run-$(basename "$OUT")" && "$DD" == "${TMPDIR:-/tmp}"* && -d "$DD" ]]; then rm -rf -- "$DD"; fi
 exit "$STATUS"
 # run marker 1793497008
+# run marker 1793497124
