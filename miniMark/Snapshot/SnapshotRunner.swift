@@ -32,6 +32,9 @@ final class SnapshotRunner {
 
   func run() async {
     try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+    // Remove pictures left by an earlier run so a failed capture cannot pass for a new one.
+    let leftovers = (try? FileManager.default.contentsOfDirectory(at: outputDirectory, includingPropertiesForKeys: nil)) ?? []
+    for file in leftovers where file.pathExtension == "png" { try? FileManager.default.removeItem(at: file) }
     NSApp.setActivationPolicy(.regular)
     logSession()
 
@@ -149,8 +152,14 @@ final class SnapshotRunner {
       return rep
     }))
     attempts.append(("cachingRep", {
-      guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
-      view.cacheDisplay(in: bounds, to: rep)
+      guard let cached = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+      view.cacheDisplay(in: bounds, to: cached)
+      // Its pixel size follows the screen, so redraw it at the fixed 2x size.
+      guard let rep = self.newBitmap(for: bounds), let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = context
+      cached.draw(in: bounds)
+      NSGraphicsContext.restoreGraphicsState()
       return rep
     }))
     attempts.append(("layer.render", {
@@ -173,7 +182,8 @@ final class SnapshotRunner {
 
   private func renderImage(of view: NSView, label: String) async -> NSBitmapImageRep? {
     let bounds = view.bounds
-    guard let rep = renderNative(of: view, label: label) ?? newBitmap(for: bounds) else { return nil }
+    // No native drawing means no usable picture, so no file is written for it.
+    guard let rep = renderNative(of: view, label: label) else { return nil }
 
     // Web views are not captured by cacheDisplay, so snapshot and draw them on top.
     for webView in webViews(in: view) {
@@ -184,7 +194,7 @@ final class SnapshotRunner {
         NSGraphicsContext.current = context
         let flipped = NSRect(
           x: frame.minX,
-          y: view.isFlipped ? frame.minY : bounds.height - frame.maxY,
+          y: view.isFlipped ? bounds.height - frame.maxY : frame.minY,
           width: frame.width,
           height: frame.height
         )

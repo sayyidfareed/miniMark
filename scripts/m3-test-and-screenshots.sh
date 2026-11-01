@@ -40,17 +40,18 @@ echo "git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)" | tee "$OUT
 # Read-only look at the desktop session and at anything left over from earlier runs.
 state_report() {
   echo "=== state $(date +%T) ($1)"
-  ioreg -n Root -d1 2>/dev/null | grep -E "IOConsoleLocked|IOConsoleUsers" | cut -c1-400
+  # Only the lock flags are kept from the console-user record; it also holds the account name.
+  ioreg -n Root -d1 2>/dev/null | grep -oE '"(IOConsoleLocked|CGSSessionScreenIsLocked|kCGSSessionOnConsoleKey)" = [A-Za-z0-9]+'
   pmset -g powerstate IODisplayWrangler 2>/dev/null | tail -n 3
-  pmset -g assertions 2>/dev/null | grep -E "PreventUserIdleDisplaySleep|UserIsActive|PreventSystemSleep" | head -n 4
-  ps -axo pid,ppid,etime,stat,command | grep -E "xcodebuild|xctest|testmanagerd|miniMark|XCTRunner" | grep -v grep | cut -c1-200
+  pmset -g assertions 2>/dev/null | grep -E "^ +(PreventUserIdleDisplaySleep|UserIsActive|PreventSystemSleep) +[0-9]"
+  ps -u "$(id -u)" -o pid,ppid,etime,stat,comm | grep -E "xcodebuild|xctest|testmanagerd|miniMark|XCTRunner" | grep -v grep
 }
 state_report "start" > "$OUT/preflight.txt" 2>&1
 
 # Keep the display awake while this script runs (the assertion ends when the script does).
 # A sleeping or locked screen stops apps from drawing, which would leave the tests and screenshots empty.
 /usr/bin/caffeinate -u -t 3 >/dev/null 2>&1
-/usr/bin/caffeinate -dimsu -w $$ >/dev/null 2>&1 &
+/usr/bin/caffeinate -dims -w $$ >/dev/null 2>&1 &
 
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS" \
   -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- build-for-testing > "$OUT/build-for-testing.log" 2>&1
@@ -59,7 +60,7 @@ echo "build-for-testing exit: $?" | tee -a "$OUT/summary.txt"
 STATUS=0
 HOST_STARTED=1
 for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests MarkdownExportTests PreviewSupportTests; do
-  if (( HOST_STARTED == 0 )); then echo "$cls: skipped, the first class never started a test" | tee -a "$OUT/summary.txt"; continue; fi
+  if (( HOST_STARTED == 0 )); then echo "$cls: skipped, an earlier class never started a test" | tee -a "$OUT/summary.txt"; continue; fi
   run_limited 180 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS,arch=arm64" \
     -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- test-without-building \
     -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 \
@@ -100,6 +101,8 @@ fi
 
 {
   echo "screenshots:"
+  count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
+  if (( count != 4 )); then echo "  expected 4 screenshots, found $count"; STATUS=1; fi
   for f in "$OUT"/screenshots/*.png; do
     [[ -e "$f" ]] || { echo "  none written"; break; }
     echo "  $(basename "$f") $(sips -g pixelWidth -g pixelHeight -g hasAlpha "$f" | tail -n 3 | tr -s ' \n' ' ')"
