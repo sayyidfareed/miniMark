@@ -32,6 +32,8 @@ final class SnapshotRunner {
 
   func run() async {
     try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+    NSApp.setActivationPolicy(.regular)
+    logSession()
 
     let variants: [(name: String, mode: DocumentView.Mode, appearance: NSAppearance.Name)] = [
       ("source-light", .source, .aqua),
@@ -65,13 +67,18 @@ final class SnapshotRunner {
     window.contentView = hosting
     window.setContentSize(windowSize)
     window.center()
+    window.makeKeyAndOrderFront(nil)
     window.orderFrontRegardless()
+    NSApp.activate(ignoringOtherApps: true)
 
     // Let SwiftUI lay out and the preview load, including Mermaid and KaTeX.
     try? await Task.sleep(for: .seconds(mode == .preview ? 4 : 1.5))
     hosting.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    log("\(name): visible=\(window.isVisible) occlusion-visible=\(window.occlusionState.contains(.visible)) active=\(NSApp.isActive) webviews=\(webViews(in: hosting).count) bounds=\(hosting.bounds.size)")
 
-    guard let image = await renderImage(of: hosting) else {
+    guard let image = await renderImage(of: hosting, label: name) else {
+      log("\(name): no image produced")
       window.orderOut(nil)
       return
     }
@@ -82,8 +89,21 @@ final class SnapshotRunner {
     window.orderOut(nil)
   }
 
-  private func renderImage(of view: NSView) async -> NSBitmapImageRep? {
-    let bounds = view.bounds
+  /// Prints a line the run script keeps in snapshot.log, so a failed capture explains itself.
+  private func log(_ message: String) {
+    print("snapshot: \(message)")
+    fflush(stdout)
+  }
+
+  /// What the login session looks like: a locked or sleeping screen is the usual reason nothing draws.
+  private func logSession() {
+    let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+    let locked = session["CGSSessionScreenIsLocked"] ?? "no"
+    let console = session["kCGSSessionOnConsoleKey"] ?? "unknown"
+    log("session: screens=\(NSScreen.screens.count) locked=\(locked) onConsole=\(console) policy=\(NSApp.activationPolicy().rawValue)")
+  }
+
+  private func newBitmap(for bounds: NSRect) -> NSBitmapImageRep? {
     guard
       let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil,
@@ -99,13 +119,65 @@ final class SnapshotRunner {
       )
     else { return nil }
     rep.size = bounds.size
+    return rep
+  }
 
-    // Native views (the source editor, toolbar, status bar).
-    view.cacheDisplay(in: bounds, to: rep)
+  /// True when every sampled pixel is the same colour, which means nothing was drawn.
+  private func isBlank(_ rep: NSBitmapImageRep) -> Bool {
+    guard let first = rep.colorAt(x: 0, y: 0) else { return true }
+    for column in stride(from: 0, to: rep.pixelsWide, by: max(1, rep.pixelsWide / 48)) {
+      for row in stride(from: 0, to: rep.pixelsHigh, by: max(1, rep.pixelsHigh / 30)) {
+        guard let color = rep.colorAt(x: column, y: row) else { continue }
+        if abs(color.redComponent - first.redComponent) > 0.01
+          || abs(color.greenComponent - first.greenComponent) > 0.01
+          || abs(color.blueComponent - first.blueComponent) > 0.01 {
+          return false
+        }
+      }
+    }
+    return true
+  }
+
+  /// Tries several ways to draw the native views and keeps the first that draws something.
+  private func renderNative(of view: NSView, label: String) -> NSBitmapImageRep? {
+    let bounds = view.bounds
+    var attempts: [(String, () -> NSBitmapImageRep?)] = []
+
+    attempts.append(("cacheDisplay") {
+      guard let rep = self.newBitmap(for: bounds) else { return nil }
+      view.cacheDisplay(in: bounds, to: rep)
+      return rep
+    })
+    attempts.append(("cachingRep") {
+      guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+      view.cacheDisplay(in: bounds, to: rep)
+      return rep
+    })
+    attempts.append(("layer.render") {
+      guard let rep = self.newBitmap(for: bounds), let layer = view.layer,
+        let context = NSGraphicsContext(bitmapImageRep: rep)?.cgContext
+      else { return nil }
+      context.scaleBy(x: 2, y: 2)
+      layer.render(in: context)
+      return rep
+    })
+
+    for (name, attempt) in attempts {
+      guard let rep = attempt() else { log("\(label): \(name) gave no bitmap"); continue }
+      let blank = isBlank(rep)
+      log("\(label): \(name) blank=\(blank)")
+      if !blank { return rep }
+    }
+    return nil
+  }
+
+  private func renderImage(of view: NSView, label: String) async -> NSBitmapImageRep? {
+    let bounds = view.bounds
+    guard let rep = renderNative(of: view, label: label) ?? newBitmap(for: bounds) else { return nil }
 
     // Web views are not captured by cacheDisplay, so snapshot and draw them on top.
     for webView in webViews(in: view) {
-      guard let snapshot = try? await webView.takeSnapshot(configuration: nil) else { continue }
+      guard let snapshot = await webSnapshot(of: webView, label: label) else { continue }
       let frame = webView.convert(webView.bounds, to: view)
       NSGraphicsContext.saveGraphicsState()
       if let context = NSGraphicsContext(bitmapImageRep: rep) {
@@ -121,7 +193,28 @@ final class SnapshotRunner {
       NSGraphicsContext.restoreGraphicsState()
     }
 
+    log("\(label): final blank=\(isBlank(rep))")
     return rep
+  }
+
+  /// Takes a web view snapshot, giving up after ten seconds so one stuck page cannot stall the run.
+  private func webSnapshot(of webView: WKWebView, label: String) async -> NSImage? {
+    await withCheckedContinuation { continuation in
+      var finished = false
+      let finish: (NSImage?) -> Void = { image in
+        guard !finished else { return }
+        finished = true
+        continuation.resume(returning: image)
+      }
+      webView.takeSnapshot(with: nil) { image, error in
+        if let error { self.log("\(label): web snapshot failed: \(error.localizedDescription)") }
+        finish(image)
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+        if !finished { self.log("\(label): web snapshot timed out") }
+        finish(nil)
+      }
+    }
   }
 
   private func webViews(in view: NSView) -> [WKWebView] {
