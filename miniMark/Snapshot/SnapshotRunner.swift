@@ -143,24 +143,24 @@ final class SnapshotRunner {
     let bounds = view.bounds
     var attempts: [(String, () -> NSBitmapImageRep?)] = []
 
-    attempts.append(("cacheDisplay") {
+    attempts.append(("cacheDisplay", {
       guard let rep = self.newBitmap(for: bounds) else { return nil }
       view.cacheDisplay(in: bounds, to: rep)
       return rep
-    })
-    attempts.append(("cachingRep") {
+    }))
+    attempts.append(("cachingRep", {
       guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
       view.cacheDisplay(in: bounds, to: rep)
       return rep
-    })
-    attempts.append(("layer.render") {
+    }))
+    attempts.append(("layer.render", {
       guard let rep = self.newBitmap(for: bounds), let layer = view.layer,
         let context = NSGraphicsContext(bitmapImageRep: rep)?.cgContext
       else { return nil }
       context.scaleBy(x: 2, y: 2)
       layer.render(in: context)
       return rep
-    })
+    }))
 
     for (name, attempt) in attempts {
       guard let rep = attempt() else { log("\(label): \(name) gave no bitmap"); continue }

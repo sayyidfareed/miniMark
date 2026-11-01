@@ -59,7 +59,7 @@ To try it: open any .md file with File > Open (or File > New), press Shift-Comma
 
 The app makes no network requests of its own. The preview uses WebKit, which loads a picture from the web only if a document links to one, so the app has the outgoing-connections sandbox entitlement. It also has user-selected file read/write (to open and save documents) and app-scoped bookmarks: when a document refers to pictures in its folder, macOS asks the user once to allow that folder, and the bookmark remembers the choice. The print entitlement is for the standard Print and Save as PDF sheet.
 
-Bundled, local-only code: Mermaid (diagrams), KaTeX (math) and highlight.js (code colours). Nothing is downloaded at runtime.
+Bundled, local-only code: Mermaid (diagrams), KaTeX (math) and highlight.js (code colours). All rendering libraries are bundled; no library code is downloaded at runtime.
 
 Sample document:
 
