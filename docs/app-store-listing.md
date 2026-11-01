@@ -12,7 +12,7 @@ Every claim below is something the build does. Character limits are Apple's; cou
 | Support URL | https://ideius.com/minimark/support/ | |
 | Privacy policy URL | https://ideius.com/minimark/privacy/ | |
 | Marketing URL | https://ideius.com/minimark/ | |
-| Copyright | needs the legal name to show (owner) | |
+| Copyright | © 2026 Ideius LLC (owner answer, Oct 31: Ideius LLC; still to be checked against the seller name on the Apple account) | |
 | Age rating | answer the questionnaire; expected 4+ (no restricted content, not a browser) | |
 | App Privacy | Data Not Collected | |
 | Export compliance | no non-exempt encryption (Info.plist already says so) | |
