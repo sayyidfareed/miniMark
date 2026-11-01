@@ -12,7 +12,9 @@ ROOT="$(pwd)"
 # Nothing outside it is created or deleted, and no earlier run's output is touched.
 RUN_ROOT="$ROOT/build/m3-run"
 OUT="$RUN_ROOT/$(date +%Y%m%dT%H%M%S)-$$"
-DD="$OUT/derived"
+# Build products go in the user's own temporary folder, not under the repo: the sandboxed app that the
+# tests launch cannot load its package frameworks from /Volumes/AgentWorkspace (dyld abort, Oct 31 crash report).
+DD="${TMPDIR:-/tmp}"; DD="${DD%/}/minimark-run-$(basename "$OUT")"
 mkdir -p "$OUT/screenshots" "$DD"
 ln -sfn "$OUT" "$RUN_ROOT/latest"
 cd "$ROOT"
@@ -121,6 +123,6 @@ count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
   done
 } | tee -a "$OUT/summary.txt"
 
-# Derived data is large; remove only the folder this run created inside its own output folder.
-if [[ "$DD" == "$RUN_ROOT"/*/derived && -d "$DD" ]]; then rm -rf -- "$DD"; fi
+# Derived data is large; remove only the folder this run created (its name carries this run's timestamp and pid).
+if [[ "$(basename "$DD")" == "minimark-run-$(basename "$OUT")" && "$DD" == "${TMPDIR:-/tmp}"* && -d "$DD" ]]; then rm -rf -- "$DD"; fi
 exit "$STATUS"
