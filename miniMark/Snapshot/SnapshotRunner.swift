@@ -45,8 +45,19 @@ final class SnapshotRunner {
       ("preview-dark", .preview, .darkAqua)
     ]
 
+    // The app's own appearance setting decides the colours, so set it for each picture and put it back after.
+    let defaults = UserDefaults.standard
+    let savedAppearance = defaults.string(forKey: AppAppearance.storageKey)
     for variant in variants {
+      let setting: AppAppearance = variant.appearance == .darkAqua ? .dark : .light
+      defaults.set(setting.rawValue, forKey: AppAppearance.storageKey)
+      AppAppearanceController.apply(setting.rawValue)
       await capture(name: variant.name, mode: variant.mode, appearance: variant.appearance)
+    }
+    if let savedAppearance {
+      defaults.set(savedAppearance, forKey: AppAppearance.storageKey)
+    } else {
+      defaults.removeObject(forKey: AppAppearance.storageKey)
     }
 
     print("snapshot-output: \(outputDirectory.path)")

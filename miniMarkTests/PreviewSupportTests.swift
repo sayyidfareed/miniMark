@@ -171,6 +171,16 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertFalse(html.contains(#"src="miniMark/Resources/screenshot_source.png""#))
   }
 
+  func testTableDelimiterRowsMayUseOneOrTwoDashes() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "| Build | Tests |\n| :-- | --: |\n| 1.0 | 42 |\n\n| A | B |\n|-|-|\n| x | y |",
+      baseURL: nil
+    )
+
+    XCTAssertEqual(html.components(separatedBy: "<table").count - 1, 2)
+    XCTAssertTrue(html.contains("<td"))
+  }
+
   func testPreviewRendererRendersTablesAndEmbedsRelativeImagesInCells() throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("miniMarkPreviewSupportTests-\(UUID().uuidString)", isDirectory: true)

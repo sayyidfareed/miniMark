@@ -1129,7 +1129,7 @@ struct MarkdownPreviewHTMLRenderer {
   private static func tableAlignments(from line: String) -> [TableAlignment]? {
     guard let cells = tableCells(from: line) else { return nil }
     let alignments = cells.map { cell -> TableAlignment? in
-      guard firstMatch(in: cell, pattern: #"^:?-{3,}:?$"#) != nil else {
+      guard firstMatch(in: cell, pattern: #"^:?-+:?$"#) != nil else {
         return nil
       }
 
