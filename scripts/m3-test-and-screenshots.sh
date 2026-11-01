@@ -50,7 +50,7 @@ state_report "start" > "$OUT/preflight.txt" 2>&1
 
 # A locked screen stops apps from drawing and test apps from starting (seen Oct 31: session locked,
 # no test started, every screenshot blank). Wait, up to 3 hours, for the owner to unlock it; read-only polling.
-screen_locked() { ioreg -n Root -d1 2>/dev/null | grep -qE '"CGSSessionScreenIsLocked" ?= ?Yes'; }
+screen_locked() { local out; out="$(ioreg -n Root -d1 2>/dev/null)"; grep -qE '"CGSSessionScreenIsLocked" ?= ?Yes' <<<"$out"; }
 waited_for_unlock=0
 while screen_locked && (( waited_for_unlock < 10800 )); do
   (( waited_for_unlock == 0 )) && echo "$(date +%T) screen is locked; waiting for it to be unlocked (up to 3 hours)" | tee -a "$OUT/summary.txt"
