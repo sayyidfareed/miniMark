@@ -161,9 +161,13 @@ final class SnapshotRunner {
       log("CGWindowListCreateImage is not available")
       return nil
     }
+    guard let windowID = UInt32(exactly: window.windowNumber), windowID > 0 else {
+      log("the window has no window-server id")
+      return nil
+    }
     let function = unsafeBitCast(symbol, to: Function.self)
     // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
-    guard let full = function(CGRect.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue() else { return nil }
+    guard let full = function(CGRect.null, 8, windowID, 1 | 8)?.takeRetainedValue() else { return nil }
     log("window image \(full.width)x\(full.height)")
     let crop = full.height - pixelHeight
     guard full.width == pixelWidth, crop >= 0,
