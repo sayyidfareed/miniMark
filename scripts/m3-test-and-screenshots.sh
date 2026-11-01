@@ -48,6 +48,17 @@ state_report() {
 }
 state_report "start" > "$OUT/preflight.txt" 2>&1
 
+# A locked screen stops apps from drawing and test apps from starting (seen Oct 31: session locked,
+# no test started, every screenshot blank). Wait, up to 3 hours, for the owner to unlock it; read-only polling.
+screen_locked() { ioreg -n Root -d1 2>/dev/null | grep -qE '"CGSSessionScreenIsLocked" ?= ?Yes'; }
+waited_for_unlock=0
+while screen_locked && (( waited_for_unlock < 10800 )); do
+  (( waited_for_unlock == 0 )) && echo "$(date +%T) screen is locked; waiting for it to be unlocked (up to 3 hours)" | tee -a "$OUT/summary.txt"
+  sleep 20; waited_for_unlock=$((waited_for_unlock + 20))
+done
+if screen_locked; then echo "screen still locked after 3 hours; giving up" | tee -a "$OUT/summary.txt"; exit 3; fi
+(( waited_for_unlock > 0 )) && echo "$(date +%T) screen unlocked after ${waited_for_unlock}s" | tee -a "$OUT/summary.txt"
+
 # Keep the display awake while this script runs (the assertion ends when the script does).
 # A sleeping or locked screen stops apps from drawing, which would leave the tests and screenshots empty.
 /usr/bin/caffeinate -u -t 3 >/dev/null 2>&1
