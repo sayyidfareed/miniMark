@@ -16,6 +16,7 @@ OUT="$RUN_ROOT/$(date +%Y%m%dT%H%M%S)-$$"
 # tests launch cannot load its package frameworks from /Volumes/AgentWorkspace (dyld abort, Oct 31 crash report).
 DD="${TMPDIR:-/tmp}"; DD="${DD%/}/minimark-run-$(basename "$OUT")"
 mkdir -p "$OUT/screenshots" "$DD"
+echo "derived data (temp, removed at the end): $DD" > "$OUT/derived-path.txt"
 ln -sfn "$OUT" "$RUN_ROOT/latest"
 cd "$ROOT"
 
@@ -79,11 +80,11 @@ for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests Mark
     -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 \
     -only-testing:"miniMarkTests/$cls" > "$OUT/test-$cls.log" 2>&1
   code=$?
-  passed=$(grep -c "passed on" "$OUT/test-$cls.log")
-  failed=$(grep -c "failed on" "$OUT/test-$cls.log")
+  passed=$(grep -c "^Test Case .* passed (" "$OUT/test-$cls.log")
+  failed=$(grep -c "^Test Case .* failed (" "$OUT/test-$cls.log")
   echo "$cls: exit $code, passed $passed, failed $failed" | tee -a "$OUT/summary.txt"
-  grep -E "failed on|error:|TIMEOUT" "$OUT/test-$cls.log" | head -n 8 | tee -a "$OUT/summary.txt"
-  last=$(grep -E "Test case '.*' started" "$OUT/test-$cls.log" | tail -n 1)
+  grep -E "failed \(|error: -\[|TIMEOUT" "$OUT/test-$cls.log" | head -n 8 | tee -a "$OUT/summary.txt"
+  last=$(grep -E "^Test Case .* started" "$OUT/test-$cls.log" | tail -n 1)
   [[ $code -ne 0 ]] && echo "  last started: $last" | tee -a "$OUT/summary.txt"
   [[ $code -ne 0 ]] && STATUS=1
   if (( code == 124 && passed + failed == 0 )); then
