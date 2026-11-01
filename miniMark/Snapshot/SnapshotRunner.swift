@@ -172,6 +172,15 @@ final class SnapshotRunner {
     return content
   }
 
+  /// The window image carries an alpha channel; App Store screenshots must not, so redraw it opaque.
+  private func opaque(_ image: CGImage) -> CGImage {
+    guard let context = makeContext() else { return image }
+    context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    context.draw(image, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    return context.makeImage() ?? image
+  }
+
   /// The native views drawn by AppKit itself (works for classic views, may not for SwiftUI).
   private func cacheDisplayImage(of view: NSView) -> CGImage? {
     guard let rep = NSBitmapImageRep(
@@ -210,7 +219,7 @@ final class SnapshotRunner {
     if let image = windowImage(of: window) {
       let blank = isBlank(image)
       log("\(label): windowList blank=\(blank)")
-      if !blank { return image }
+      if !blank { return opaque(image) }
     }
 
     // 2. AppKit drawing of the views, with the web views snapshotted and laid on top.
