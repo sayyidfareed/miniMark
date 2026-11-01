@@ -80,6 +80,11 @@ final class SnapshotRunner {
     window.displayIfNeeded()
     log("\(name): visible=\(window.isVisible) occlusion-visible=\(window.occlusionState.contains(.visible)) active=\(NSApp.isActive) webviews=\(webViews(in: hosting).count) bounds=\(hosting.bounds.size)")
 
+    if mode == .preview && webViews(in: hosting).isEmpty {
+      log("\(name): the preview web view never appeared")
+      window.orderOut(nil)
+      return
+    }
     guard let image = await renderImage(of: hosting, label: name) else {
       log("\(name): no image produced")
       window.orderOut(nil)
@@ -187,7 +192,7 @@ final class SnapshotRunner {
 
     // Web views are not captured by cacheDisplay, so snapshot and draw them on top.
     for webView in webViews(in: view) {
-      guard let snapshot = await webSnapshot(of: webView, label: label) else { continue }
+      guard let snapshot = await webSnapshot(of: webView, label: label) else { return nil }
       let frame = webView.convert(webView.bounds, to: view)
       NSGraphicsContext.saveGraphicsState()
       if let context = NSGraphicsContext(bitmapImageRep: rep) {

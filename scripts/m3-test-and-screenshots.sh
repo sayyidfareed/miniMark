@@ -41,10 +41,10 @@ echo "git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)" | tee "$OUT
 state_report() {
   echo "=== state $(date +%T) ($1)"
   # Only the lock flags are kept from the console-user record; it also holds the account name.
-  ioreg -n Root -d1 2>/dev/null | grep -oE '"(IOConsoleLocked|CGSSessionScreenIsLocked|kCGSSessionOnConsoleKey)" = [A-Za-z0-9]+'
+  ioreg -n Root -d1 2>/dev/null | grep -oE '"(IOConsoleLocked|CGSSessionScreenIsLocked|kCGSSessionOnConsoleKey)" ?= ?[A-Za-z0-9]+'
   pmset -g powerstate IODisplayWrangler 2>/dev/null | tail -n 3
   pmset -g assertions 2>/dev/null | grep -E "^ +(PreventUserIdleDisplaySleep|UserIsActive|PreventSystemSleep) +[0-9]"
-  ps -u "$(id -u)" -o pid,ppid,etime,stat,comm | grep -E "xcodebuild|xctest|testmanagerd|miniMark|XCTRunner" | grep -v grep
+  ps -x -U "$(id -u)" -o pid,ppid,etime,stat,comm | grep -E "xcodebuild|xctest|testmanagerd|miniMark|XCTRunner" | grep -v grep
 }
 state_report "start" > "$OUT/preflight.txt" 2>&1
 
@@ -99,10 +99,11 @@ if [[ -n "$SHOTS" && -d "$SHOTS" ]]; then
   cp "$SHOTS"/*.png "$OUT/screenshots/" 2>/dev/null || true
 fi
 
+count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
+(( count == 4 )) || STATUS=1
 {
   echo "screenshots:"
-  count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
-  if (( count != 4 )); then echo "  expected 4 screenshots, found $count"; STATUS=1; fi
+  (( count == 4 )) || echo "  expected 4 screenshots, found $count"
   for f in "$OUT"/screenshots/*.png; do
     [[ -e "$f" ]] || { echo "  none written"; break; }
     echo "  $(basename "$f") $(sips -g pixelWidth -g pixelHeight -g hasAlpha "$f" | tail -n 3 | tr -s ' \n' ' ')"
