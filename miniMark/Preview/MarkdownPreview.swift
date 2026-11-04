@@ -814,6 +814,11 @@ struct MarkdownPreviewHTMLRenderer {
     let mode: RenderMode
     let footnotes: FootnoteIndex
     private var usedHeadingIDs = Set<String>()
+    private var nextHeadingSuffix: [String: Int] = [:]
+    /// How many block quotes and list items deep the renderer is; capped so a crafted line of
+    /// thousands of `>` or `-` markers cannot overflow the stack.
+    var depth = 0
+    static let maxDepth = 32
 
     init(baseURL: URL?, mode: RenderMode, footnotes: FootnoteIndex) {
       self.baseURL = baseURL
@@ -837,11 +842,12 @@ struct MarkdownPreviewHTMLRenderer {
       guard !base.isEmpty else { return nil }
 
       var candidate = base
-      var suffix = 1
+      var suffix = nextHeadingSuffix[base] ?? 1
       while usedHeadingIDs.contains(candidate) {
         candidate = "\(base)-\(suffix)"
         suffix += 1
       }
+      nextHeadingSuffix[base] = suffix
       usedHeadingIDs.insert(candidate)
       return candidate
     }
@@ -931,20 +937,26 @@ struct MarkdownPreviewHTMLRenderer {
         continue
       }
 
-      if trimmed.hasPrefix(">") {
-        flushParagraph()
+      if trimmed.hasPrefix(">"), context.depth < RenderContext.maxDepth {
         let quote = collectBlockquote(from: lines, startingAt: index)
-        let inner = renderBlocks(quote.lines, context: context).joined(separator: "\n")
-        output.append("<blockquote>\(inner)</blockquote>")
-        index = quote.nextIndex
-        continue
+        if quote.nextIndex > index {
+          flushParagraph()
+          context.depth += 1
+          let inner = renderBlocks(quote.lines, context: context).joined(separator: "\n")
+          context.depth -= 1
+          output.append("<blockquote>\(inner)</blockquote>")
+          index = quote.nextIndex
+          continue
+        }
       }
 
-      if listItem(in: line) != nil {
+      if listItem(in: line) != nil, context.depth < RenderContext.maxDepth {
         flushParagraph()
+        context.depth += 1
         let list = renderList(from: lines, startingAt: index, context: context)
+        context.depth -= 1
         output.append(list.html)
-        index = list.nextIndex
+        index = max(list.nextIndex, index + 1)
         continue
       }
 
@@ -1075,7 +1087,9 @@ struct MarkdownPreviewHTMLRenderer {
 
     while index < lines.count {
       let line = lines[index]
-      let content = line.drop(while: { $0 == " " || $0 == "\t" })
+      // Same whitespace rule as the caller's trim, so a quote line indented with a no-break or
+      // ideographic space is still recognised (otherwise the caller would never advance).
+      let content = line.drop(while: { $0.isWhitespace })
       if content.first == ">" {
         var rest = content.dropFirst()
         if rest.first == " " || rest.first == "\t" {
@@ -2051,10 +2065,10 @@ struct MarkdownPreviewHTMLRenderer {
       "<em>\(match.capture(1, in: html) ?? "")</em>"
     }
     // Underscores emphasize only at word boundaries, so snake_case_names stay as they are.
-    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])__(?![\s_])(.+?)(?<![\s_])__(?![\p{L}\p{N}_])"#) { match in
+    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])__(?![\s_])([^\n]{1,500}?)(?<![\s_])__(?![\p{L}\p{N}_])"#) { match in
       "<strong>\(match.capture(1, in: html) ?? "")</strong>"
     }
-    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])_(?![\s_])(.+?)(?<![\s_])_(?![\p{L}\p{N}_])"#) { match in
+    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])_(?![\s_])([^\n]{1,500}?)(?<![\s_])_(?![\p{L}\p{N}_])"#) { match in
       "<em>\(match.capture(1, in: html) ?? "")</em>"
     }
     html = replacingMatches(in: html, pattern: #"~~([^~]+)~~"#) { match in

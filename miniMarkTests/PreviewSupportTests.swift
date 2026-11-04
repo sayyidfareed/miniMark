@@ -942,4 +942,37 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertEqual(urls.first?.lastPathComponent, "logo.png")
     XCTAssertEqual(urls.first?.deletingLastPathComponent().lastPathComponent, "assets")
   }
+
+  // Review findings, Nov 4: inputs that used to hang or could overflow the stack.
+
+  func testQuoteIndentedWithUnicodeSpacesRendersAndFinishes() {
+    for space in ["\u{00A0}", "\u{3000}", "\u{2003}"] {
+      let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "\(space)> quoted\n\n>\(space)> nested", baseURL: nil)
+      XCTAssertTrue(html.contains("quoted"), "quote with leading U+\(String(space.unicodeScalars.first!.value, radix: 16))")
+      XCTAssertTrue(html.contains("nested"))
+    }
+  }
+
+  func testDeeplyNestedQuotesAndListsDoNotCrash() {
+    let quotes = String(repeating: ">", count: 5_000) + " deep"
+    let quoteHTML = MarkdownPreviewHTMLRenderer.htmlDocument(for: quotes, baseURL: nil)
+    XCTAssertTrue(quoteHTML.contains("deep"))
+
+    let list = String(repeating: "- ", count: 2_000) + "x"
+    let listHTML = MarkdownPreviewHTMLRenderer.htmlDocument(for: list, baseURL: nil)
+    XCTAssertTrue(listHTML.contains("x"))
+  }
+
+  func testManyIdenticalHeadingsGetUniqueIDs() {
+    let markdown = Array(repeating: "## Same", count: 300).joined(separator: "\n\n")
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+    XCTAssertTrue(html.contains(#"id="same""#))
+    XCTAssertTrue(html.contains(#"id="same-299""#))
+  }
+
+  func testUnmatchedUnderscoresInALongParagraphFinish() {
+    let markdown = Array(repeating: "_open word", count: 3_000).joined(separator: " ")
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+    XCTAssertTrue(html.contains("open word"))
+  }
 }

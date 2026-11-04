@@ -146,6 +146,9 @@ final class MarkdownExportCoordinator {
   }
 
   func printDocument(_ context: MarkdownExportContext) {
+    // One print at a time: a second Print while the first is still preparing would drop the first
+    // controller without closing its hidden window.
+    guard printController == nil else { return }
     let controller = MarkdownPrintController { [weak self] in
       self?.printController = nil
     }
@@ -761,6 +764,10 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    finish()
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     finish()
   }
 

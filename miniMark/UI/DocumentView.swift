@@ -49,7 +49,9 @@ struct DocumentView: View {
     let savedMode = initialMode ?? UserDefaults.standard.string(forKey: Self.defaultModeKey)
       .flatMap(Mode.init(rawValue:)) ?? .source
     self._mode = State(initialValue: savedMode)
-    self._textMetrics = State(initialValue: DocumentTextMetrics(text: document.wrappedValue.text))
+    // Filled in onAppear: SwiftUI re-creates this view struct often, and State's initial value is
+    // evaluated every time, so measuring the whole text here would run on every update.
+    self._textMetrics = State(initialValue: .empty)
   }
 
   /// Computed once per body evaluation from the cached text metrics.
@@ -118,6 +120,7 @@ struct DocumentView: View {
     .onAppear {
       AppAppearanceController.apply(appearanceRaw)
       previewMarkdown = document.text
+      textMetrics = DocumentTextMetrics(text: document.text)
       exportCoordinator.updateCurrentContext(exportContext)
     }
     .onChange(of: appearanceRaw) { _, newValue in
