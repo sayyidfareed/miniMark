@@ -81,7 +81,7 @@ echo "build-for-testing exit: $?" | tee -a "$OUT/summary.txt"
 
 STATUS=0
 HOST_STARTED=1
-for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests MarkdownExportTests PreviewSupportTests; do
+for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests MarkdownSourceStylerTests MarkdownExportTests PreviewSupportTests; do
   if (( HOST_STARTED == 0 )); then echo "$cls: skipped, an earlier class never started a test" | tee -a "$OUT/summary.txt"; continue; fi
   run_limited 180 xcodebuild -project miniMark.xcodeproj -scheme miniMark -destination "platform=macOS,arch=arm64" \
     -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- test-without-building \
