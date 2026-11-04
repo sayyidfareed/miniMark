@@ -7,6 +7,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     false
   }
 
+  /// Clicking the Dock icon with no window open shows the open panel again, so the app is never left
+  /// without a way in after the first panel was cancelled.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag, !isRunningTests, NSDocumentController.shared.documents.isEmpty {
+      if let panel = launchOpenPanel {
+        panel.makeKeyAndOrderFront(nil)
+      } else {
+        openInitialDocument()
+      }
+      return false
+    }
+    return true
+  }
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard !isRunningTests else { return }
 

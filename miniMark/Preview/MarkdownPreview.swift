@@ -2037,9 +2037,13 @@ private struct MarkdownWebPreview: NSViewRepresentable {
 
       if url.fragment != nil, url.scheme == "file" || url.scheme == "about" {
         decisionHandler(.allow)
-      } else {
+        return
+      }
+      decisionHandler(.cancel)
+      // Documents can come from anywhere, so a link only ever opens a web page, an email or a file;
+      // other schemes (which could start another app) are ignored.
+      if let scheme = url.scheme?.lowercased(), ["http", "https", "mailto", "file"].contains(scheme) {
         NSWorkspace.shared.open(url)
-        decisionHandler(.cancel)
       }
     }
   }
