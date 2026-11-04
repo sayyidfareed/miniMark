@@ -51,16 +51,24 @@ state_report() {
 }
 state_report "start" > "$OUT/preflight.txt" 2>&1
 
-# A locked screen stops apps from drawing and test apps from starting (seen Oct 31: session locked,
-# no test started, every screenshot blank). Wait, up to 3 hours, for the owner to unlock it; read-only polling.
-screen_locked() { local out; out="$(ioreg -n Root -d1 2>/dev/null)"; grep -qE '"CGSSessionScreenIsLocked" ?= ?Yes' <<<"$out"; }
+# A locked screen stops apps from drawing and test apps from starting (seen Oct 31). Read the lock flag of
+# this user's own console session only (other sessions on the Mac can carry their own flag), log what the
+# machine reports every minute, and wait at most 5 minutes: after that, run anyway and let the app's own
+# capture report whether it could draw.
+screen_locked() {
+  local out mine
+  out="$(ioreg -n Root -d1 2>/dev/null | grep IOConsoleUsers)"
+  mine="$(printf '%s' "$out" | tr '}' '\n' | grep -E "\"kCGSSessionUserIDKey\" ?= ?$(id -u)([^0-9]|$)" || true)"
+  [[ -n "$mine" ]] || mine="$out"
+  grep -qE '"CGSSessionScreenIsLocked" ?= ?Yes' <<<"$mine"
+}
 waited_for_unlock=0
-while screen_locked && (( waited_for_unlock < 10800 )); do
-  (( waited_for_unlock == 0 )) && echo "$(date +%T) screen is locked; waiting for it to be unlocked (up to 3 hours)" | tee -a "$OUT/summary.txt"
+while screen_locked && (( waited_for_unlock < 300 )); do
+  (( waited_for_unlock % 60 == 0 )) && echo "$(date +%T) this user's session reads as locked; waiting (max 5 min)" | tee -a "$OUT/summary.txt"
   sleep 20; waited_for_unlock=$((waited_for_unlock + 20))
 done
-if screen_locked; then echo "screen still locked after 3 hours; giving up" | tee -a "$OUT/summary.txt"; exit 3; fi
-(( waited_for_unlock > 0 )) && echo "$(date +%T) screen unlocked after ${waited_for_unlock}s" | tee -a "$OUT/summary.txt"
+if screen_locked; then echo "$(date +%T) still reads as locked after 5 min; running anyway" | tee -a "$OUT/summary.txt"; fi
+(( waited_for_unlock > 0 )) && echo "$(date +%T) waited ${waited_for_unlock}s for the lock flag" | tee -a "$OUT/summary.txt"
 
 # Keep the display awake while this script runs (the assertion ends when the script does).
 # A sleeping or locked screen stops apps from drawing, which would leave the tests and screenshots empty.
