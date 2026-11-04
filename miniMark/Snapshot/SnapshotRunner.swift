@@ -54,6 +54,11 @@ final class SnapshotRunner {
     let defaults = UserDefaults.standard
     let savedAppearance = defaults.string(forKey: AppAppearance.storageKey)
     var windows: [String: CGImage] = [:]
+    // The first window of a launch can be captured before the app is frontmost (grey title bar buttons), so
+    // take one throwaway picture first.
+    defaults.set(AppAppearance.light.rawValue, forKey: AppAppearance.storageKey)
+    AppAppearanceController.apply(AppAppearance.light.rawValue)
+    _ = await capture(name: "warm-up", sample: .releaseNotes, mode: .preview, appearance: .aqua, writeRaw: false)
     for shot in shots {
       let setting: AppAppearance = shot.dark ? .dark : .light
       defaults.set(setting.rawValue, forKey: AppAppearance.storageKey)
