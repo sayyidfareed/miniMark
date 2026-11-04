@@ -340,6 +340,7 @@ enum MarkdownPlainTextRenderer {
     var output: [String] = []
     var paragraph: [String] = []
     var codeFence: [String]?
+    var fenceMarker: (character: Character, length: Int) = ("`", 3)
     var index = 0
 
     func appendBlankIfNeeded() {
@@ -359,7 +360,10 @@ enum MarkdownPlainTextRenderer {
       let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
       if var fence = codeFence {
-        if trimmed.hasPrefix("```") {
+        if let closing = fenceMarkerRun(in: trimmed),
+           closing.character == fenceMarker.character,
+           closing.length >= fenceMarker.length,
+           trimmed.count == closing.length {
           output.append(contentsOf: fence)
           appendBlankIfNeeded()
           codeFence = nil
@@ -377,8 +381,9 @@ enum MarkdownPlainTextRenderer {
         continue
       }
 
-      if trimmed.hasPrefix("```") {
+      if let opening = fenceMarkerRun(in: trimmed) {
         flushParagraph()
+        fenceMarker = opening
         codeFence = []
         index += 1
         continue
@@ -400,18 +405,22 @@ enum MarkdownPlainTextRenderer {
         continue
       }
 
-      if let item = capture(in: trimmed, pattern: #"^[-*+]\s+(.+)$"#, index: 1) {
+      // List items keep their leading indentation so nested lists stay nested.
+      if let item = firstMatch(in: line, pattern: #"^([ \t]*)[-*+][ \t]+(.+)$"#),
+         let indent = item.capture(1, in: line),
+         let content = item.capture(2, in: line) {
         flushParagraph()
-        output.append("- \(renderInline(item))")
+        output.append("\(indent)- \(renderInline(content))")
         index += 1
         continue
       }
 
-      if let ordered = firstMatch(in: trimmed, pattern: #"^(\d+[.)])\s+(.+)$"#),
-         let marker = ordered.capture(1, in: trimmed),
-         let item = ordered.capture(2, in: trimmed) {
+      if let ordered = firstMatch(in: line, pattern: #"^([ \t]*)(\d+[.)])[ \t]+(.+)$"#),
+         let indent = ordered.capture(1, in: line),
+         let marker = ordered.capture(2, in: line),
+         let item = ordered.capture(3, in: line) {
         flushParagraph()
-        output.append("\(marker) \(renderInline(item))")
+        output.append("\(indent)\(marker) \(renderInline(item))")
         index += 1
         continue
       }
@@ -479,37 +488,85 @@ enum MarkdownPlainTextRenderer {
     return alignments.count == cells.count ? alignments : nil
   }
 
-  private static func renderInline(_ markdown: String) -> String {
-    var text = markdown
+  /// Private-use characters that bracket placeholders for text that must not be touched by the
+  /// emphasis rules (code spans and backslash escapes).
+  private static let placeholderStart = "\u{E000}"
+  private static let placeholderEnd = "\u{E001}"
 
-    text = replacingMatches(in: text, pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#) { match, source in
+  private static let protectedRegex = makeRegex(
+    #"\\([`*_{}\[\]()#+\-.!~|<>])|(?<!`)(`+)(?!`)(.+?)(?<!`)\2(?!`)"#
+  )
+  private static let imageRegex = makeRegex(#"!\[([^\]]*)\]\(([^)]+)\)"#)
+  private static let linkRegex = makeRegex(#"\[([^\]]+)\]\(([^)]+)\)"#)
+  private static let emphasisRegexes: [NSRegularExpression] = [
+    // Strong and emphasis markers only count as pairs: the opener must be followed by non-space,
+    // the closer preceded by non-space, and neither may touch a word character on the outside.
+    // That keeps snake_case_names, `2 * 3 * 4` and `a*b*c` untouched.
+    makeRegex(#"(?<![\w*])\*\*(?=\S)(.+?)(?<=\S)\*\*(?![\w*])"#),
+    makeRegex(#"(?<![\w_])__(?=\S)(.+?)(?<=\S)__(?![\w_])"#),
+    makeRegex(#"(?<![\w~])~~(?=\S)(.+?)(?<=\S)~~(?![\w~])"#),
+    makeRegex(#"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])"#),
+    makeRegex(#"(?<![\w_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w_])"#)
+  ]
+  private static let placeholderRegex = makeRegex("\u{E000}(\\d+)\u{E001}")
+
+  /// Strips Markdown inline syntax conservatively. Text that is not clearly Markdown is left exactly
+  /// as typed: code span contents stay verbatim, backslash escapes lose only the backslash, and HTML
+  /// entities are never decoded.
+  private static func renderInline(_ markdown: String) -> String {
+    // Placeholders use private-use characters; if the text already contains them, leave it alone.
+    guard !markdown.contains(placeholderStart), !markdown.contains(placeholderEnd) else {
+      return markdown
+    }
+
+    var protected: [String] = []
+    func stash(_ value: String) -> String {
+      protected.append(value)
+      return "\(placeholderStart)\(protected.count - 1)\(placeholderEnd)"
+    }
+
+    var text = replacingMatches(in: markdown, regex: protectedRegex) { match, source in
+      if let escaped = match.capture(1, in: source) {
+        return stash(escaped)
+      }
+      var code = match.capture(3, in: source) ?? ""
+      if code.count > 2, code.hasPrefix(" "), code.hasSuffix(" "), code.contains(where: { $0 != " " }) {
+        code = String(code.dropFirst().dropLast())
+      }
+      return stash(code)
+    }
+
+    text = replacingMatches(in: text, regex: imageRegex) { match, source in
       let alt = match.capture(1, in: source) ?? ""
       let path = match.capture(2, in: source) ?? ""
       return alt.isEmpty ? path : alt
     }
-    text = replacingMatches(in: text, pattern: #"\[([^\]]+)\]\(([^)]+)\)"#) { match, source in
-      match.capture(1, in: source) ?? ""
-    }
-    text = replacingMatches(in: text, pattern: #"`([^`]+)`"#) { match, source in
-      match.capture(1, in: source) ?? ""
-    }
-    text = replacingMatches(in: text, pattern: #"\*\*([^*]+)\*\*"#) { match, source in
-      match.capture(1, in: source) ?? ""
-    }
-    text = replacingMatches(in: text, pattern: #"__([^_]+)__"#) { match, source in
-      match.capture(1, in: source) ?? ""
-    }
-    text = replacingMatches(in: text, pattern: #"(?<!\*)\*([^*]+)\*(?!\*)"#) { match, source in
-      match.capture(1, in: source) ?? ""
-    }
-    text = replacingMatches(in: text, pattern: #"(?<!_)_([^_]+)_(?!_)"#) { match, source in
+    text = replacingMatches(in: text, regex: linkRegex) { match, source in
       match.capture(1, in: source) ?? ""
     }
 
-    return text
-      .replacingOccurrences(of: "&amp;", with: "&")
-      .replacingOccurrences(of: "&lt;", with: "<")
-      .replacingOccurrences(of: "&gt;", with: ">")
+    for regex in emphasisRegexes {
+      text = replacingMatches(in: text, regex: regex) { match, source in
+        match.capture(1, in: source) ?? ""
+      }
+    }
+
+    return replacingMatches(in: text, regex: placeholderRegex) { match, source in
+      guard let value = match.capture(1, in: source), let index = Int(value), protected.indices.contains(index) else {
+        return ""
+      }
+      return protected[index]
+    }
+  }
+
+  /// Returns the fence character and run length when the line is a fence opener or closer.
+  private static func fenceMarkerRun(in trimmed: String) -> (character: Character, length: Int)? {
+    guard let first = trimmed.first, first == "`" || first == "~" else { return nil }
+    let length = trimmed.prefix(while: { $0 == first }).count
+    guard length >= 3 else { return nil }
+    // A backtick fence's info string may not contain backticks (that would be an inline code span).
+    if first == "`", trimmed.dropFirst(length).contains("`") { return nil }
+    return (first, length)
   }
 
   private static func capture(in text: String, pattern: String, index: Int) -> String? {
@@ -522,10 +579,9 @@ enum MarkdownPlainTextRenderer {
 
   private static func replacingMatches(
     in text: String,
-    pattern: String,
+    regex: NSRegularExpression,
     transform: (NSTextCheckingResult, String) -> String
   ) -> String {
-    let regex = regularExpression(for: pattern)
     var result = ""
     var currentIndex = text.startIndex
 
@@ -541,8 +597,12 @@ enum MarkdownPlainTextRenderer {
   }
 
   private static func regularExpression(for pattern: String) -> NSRegularExpression {
+    makeRegex(pattern)
+  }
+
+  private static func makeRegex(_ pattern: String) -> NSRegularExpression {
     do {
-      return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+      return try NSRegularExpression(pattern: pattern, options: [])
     } catch {
       preconditionFailure("Invalid regular expression: \(pattern)")
     }
@@ -551,8 +611,18 @@ enum MarkdownPlainTextRenderer {
 
 @MainActor
 private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
+  /// Margins in points (0.75 inch) on every side.
+  private static let pageMargin: CGFloat = 54
+  /// Fallback paper (US Letter) when the system print settings report no paper size.
+  private static let fallbackPaperSize = NSSize(width: 612, height: 792)
+  private static let readinessPollInterval: TimeInterval = 0.05
+  private static let readinessPollLimit = 160
+
   private let completion: () -> Void
   private var webView: WKWebView?
+  private var hostWindow: NSWindow?
+  private var printInfo: NSPrintInfo?
+  private var jobTitle = "Untitled"
   private weak var window: NSWindow?
 
   init(completion: @escaping () -> Void) {
@@ -561,13 +631,33 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
 
   func print(_ context: MarkdownExportContext) {
     window = NSApp.keyWindow
+    jobTitle = context.suggestedBaseName
+
+    // Paper and margins come from the user's default print settings (US Letter or A4 by region);
+    // the page is laid out at the printable width so it paginates the way it will be printed.
+    let info = NSPrintInfo.shared.copy() as? NSPrintInfo ?? NSPrintInfo()
+    if info.paperSize.width < 100 || info.paperSize.height < 100 {
+      info.paperSize = Self.fallbackPaperSize
+    }
+    info.topMargin = Self.pageMargin
+    info.bottomMargin = Self.pageMargin
+    info.leftMargin = Self.pageMargin
+    info.rightMargin = Self.pageMargin
+    info.isHorizontallyCentered = false
+    info.isVerticallyCentered = false
+    info.horizontalPagination = .fit
+    info.verticalPagination = .automatic
+    printInfo = info
+
+    let contentSize = printableSize(for: info)
 
     let configuration = WKWebViewConfiguration()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
-    let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 760, height: 980), configuration: configuration)
+    let webView = WKWebView(frame: NSRect(origin: .zero, size: contentSize), configuration: configuration)
     webView.navigationDelegate = self
     self.webView = webView
+    attachToOffscreenWindow(webView, size: contentSize)
 
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(
       for: context.markdown,
@@ -577,38 +667,79 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
     webView.loadHTMLString(html, baseURL: context.baseURL)
   }
 
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    waitForMermaid(in: webView, attemptsRemaining: 100)
+  /// A WKWebView that is not in a window never lays out, so Mermaid (which measures text) and the
+  /// print pagination can come out blank or as a single page. Hosting it in a borderless, invisible
+  /// window far off screen gives it a real layout without anything flashing on screen.
+  private func attachToOffscreenWindow(_ webView: WKWebView, size: NSSize) {
+    let host = NSWindow(
+      contentRect: NSRect(x: -20_000, y: -20_000, width: size.width, height: size.height),
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    host.isReleasedWhenClosed = false
+    host.isRestorable = false
+    host.isExcludedFromWindowsMenu = true
+    host.hasShadow = false
+    host.alphaValue = 0
+    host.ignoresMouseEvents = true
+    host.collectionBehavior = [.transient, .ignoresCycle, .stationary]
+    host.contentView = webView
+    host.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+    host.orderBack(nil)
+    hostWindow = host
   }
 
-  private func waitForMermaid(in webView: WKWebView, attemptsRemaining: Int) {
-    webView.evaluateJavaScript(
-      "document.body.dataset.mermaidReady !== 'pending'"
-    ) { [weak self, weak webView] result, _ in
+  private func printableSize(for info: NSPrintInfo) -> NSSize {
+    NSSize(
+      width: max(info.paperSize.width - info.leftMargin - info.rightMargin, 200),
+      height: max(info.paperSize.height - info.topMargin - info.bottomMargin, 200)
+    )
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    waitUntilReady(webView, attemptsRemaining: Self.readinessPollLimit)
+  }
+
+  /// Waits for the page to finish loading, fonts to settle and Mermaid to report 'ready', 'failed'
+  /// or 'unavailable' (KaTeX renders synchronously while the page loads). Gives up after a few
+  /// seconds so a broken diagram can never block printing.
+  private func waitUntilReady(_ webView: WKWebView, attemptsRemaining: Int) {
+    let script = """
+      (document.readyState === 'complete')
+        && (!document.fonts || document.fonts.status !== 'loading')
+        && (!document.body || document.body.dataset.mermaidReady !== 'pending')
+      """
+
+    webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
       guard let self, let webView else { return }
 
       if (result as? Bool) == true || attemptsRemaining <= 0 {
-        self.runPrintOperation(for: webView)
+        // One more beat so layout settles after the last diagram is inserted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak webView] in
+          guard let self, let webView else { return }
+          self.runPrintOperation(for: webView)
+        }
         return
       }
 
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak webView] in
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.readinessPollInterval) { [weak self, weak webView] in
         guard let self, let webView else { return }
-        self.waitForMermaid(in: webView, attemptsRemaining: attemptsRemaining - 1)
+        self.waitUntilReady(webView, attemptsRemaining: attemptsRemaining - 1)
       }
     }
   }
 
   private func runPrintOperation(for webView: WKWebView) {
-    let printInfo = NSPrintInfo.shared.copy() as? NSPrintInfo ?? NSPrintInfo()
-    printInfo.topMargin = 52
-    printInfo.bottomMargin = 52
-    printInfo.leftMargin = 52
-    printInfo.rightMargin = 52
-    printInfo.horizontalPagination = .fit
-    printInfo.verticalPagination = .automatic
+    let info = printInfo ?? NSPrintInfo.shared
+    let contentSize = printableSize(for: info)
 
-    let operation = webView.printOperation(with: printInfo)
+    webView.frame = NSRect(origin: .zero, size: contentSize)
+
+    let operation = webView.printOperation(with: info)
+    operation.view?.frame = NSRect(origin: .zero, size: contentSize)
+    operation.jobTitle = jobTitle
+    // The standard print sheet stays: it carries Save as PDF, paper size and page range.
     operation.showsPrintPanel = true
     operation.showsProgressPanel = true
 
@@ -642,7 +773,13 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
   }
 
   private func finish() {
-    self.webView = nil
+    webView?.navigationDelegate = nil
+    webView = nil
+    hostWindow?.orderOut(nil)
+    hostWindow?.contentView = nil
+    hostWindow?.close()
+    hostWindow = nil
+    printInfo = nil
     window = nil
     completion()
   }

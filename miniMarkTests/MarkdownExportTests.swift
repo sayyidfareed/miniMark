@@ -143,6 +143,64 @@ final class MarkdownExportTests: XCTestCase {
     XCTAssertFalse(text.contains("[link]"))
   }
 
+  func testPlainTextKeepsIntrawordUnderscores() {
+    let text = MarkdownPlainTextRenderer.plainText(for: "Use my_var_name and __init__ here, or _emphasis_ too.")
+
+    XCTAssertTrue(text.contains("Use my_var_name and init here, or emphasis too."))
+  }
+
+  func testPlainTextKeepsSpacedAndIntrawordAsterisks() {
+    let text = MarkdownPlainTextRenderer.plainText(for: "Compute 2 * 3 * 4 and 2*3*4 then *real* and **strong**.")
+
+    XCTAssertTrue(text.contains("Compute 2 * 3 * 4 and 2*3*4 then real and strong."))
+  }
+
+  func testPlainTextDoesNotUnescapeLiteralEntities() {
+    let text = MarkdownPlainTextRenderer.plainText(for: "Type &lt;div&gt; and AT&amp;T literally.")
+
+    XCTAssertTrue(text.contains("Type &lt;div&gt; and AT&amp;T literally."))
+  }
+
+  func testPlainTextKeepsNestedListIndentation() {
+    let text = MarkdownPlainTextRenderer.plainText(
+      for: """
+      - Parent
+        - Child
+          - Grandchild
+      1. One
+         1. Nested one
+      """
+    )
+
+    XCTAssertTrue(text.contains("- Parent\n  - Child\n    - Grandchild"))
+    XCTAssertTrue(text.contains("1. One\n   1. Nested one"))
+  }
+
+  func testPlainTextKeepsCodeVerbatim() {
+    let text = MarkdownPlainTextRenderer.plainText(
+      for: """
+      Call `my_func(*args, **kwargs)` and `a_b_c`.
+
+      ```python
+      x = 2 * 3 * 4
+      name = "**not bold**" + &lt;
+          indented = _keep_
+      ```
+      """
+    )
+
+    XCTAssertTrue(text.contains("Call my_func(*args, **kwargs) and a_b_c."))
+    XCTAssertTrue(text.contains("x = 2 * 3 * 4"))
+    XCTAssertTrue(text.contains(#"name = "**not bold**" + &lt;"#))
+    XCTAssertTrue(text.contains("    indented = _keep_"))
+  }
+
+  func testPlainTextBackslashEscapesLoseOnlyTheBackslash() {
+    let text = MarkdownPlainTextRenderer.plainText(for: #"Literal \*stars\* and C:\path stay."#)
+
+    XCTAssertTrue(text.contains(#"Literal *stars* and C:\path stay."#))
+  }
+
   func testRTFExportReturnsRTFData() throws {
     let context = MarkdownExportContext(
       markdown: """
