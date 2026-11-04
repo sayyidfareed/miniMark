@@ -94,7 +94,7 @@ for cls in MarkdownDocumentTests DocumentStatsTests MarkdownFormattingTests Mark
 done
 
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release \
-  -destination "platform=macOS" -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- \
+  -destination "platform=macOS" -derivedDataPath "$DD" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SNAPSHOT_MODE' \
   build > "$OUT/build.log" 2>&1 || { echo "release build failed; see build.log" | tee -a "$OUT/summary.txt"; exit 1; }
 

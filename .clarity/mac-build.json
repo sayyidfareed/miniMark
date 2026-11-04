@@ -4,7 +4,7 @@
    "argv": [
     "/bin/bash",
     "-c",
-    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_IDENTITY=- build; mkdir -p build; ditto -c -k --keepParent build/dd/Build/Products/Release/miniMark.app build/miniMark.app.zip"
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build; mkdir -p build; ditto -c -k --keepParent build/dd/Build/Products/Release/miniMark.app build/miniMark.app.zip"
    ],
    "output": "build/miniMark.app.zip",
    "workspace": "persistent"
@@ -31,9 +31,18 @@
    "argv": [
     "/bin/bash",
     "-c",
-    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_IDENTITY=- SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SNAPSHOT_MODE' build; mkdir -p build; echo ok > build/compile-snapshot.txt"
+    "set -euo pipefail; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -derivedDataPath build/dd CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SNAPSHOT_MODE' build; mkdir -p build; echo ok > build/compile-snapshot.txt"
    ],
    "output": "build/compile-snapshot.txt",
+   "workspace": "persistent"
+  },
+  "archive-check": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; mkdir -p build; xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -destination 'generic/platform=macOS' -archivePath build/AppStore.xcarchive -derivedDataPath build/dd CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= archive; A=build/AppStore.xcarchive/Products/Applications/miniMark.app; { echo archs: $(lipo -archs $A/Contents/MacOS/miniMark); echo version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' $A/Contents/Info.plist) build $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' $A/Contents/Info.plist); echo bundle: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' $A/Contents/Info.plist); echo quarantine files: $(xattr -rl $A 2>/dev/null | grep -c com.apple.quarantine || true); echo frameworks: $(ls $A/Contents/Frameworks 2>/dev/null | tr '\\n' ' '); } > build/archive-check.txt"
+   ],
+   "output": "build/archive-check.txt",
    "workspace": "persistent"
   }
  }
