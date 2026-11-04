@@ -15,7 +15,17 @@ xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release -
 APP="$DD/Build/Products/Release/miniMark.app"
 codesign --verify --deep --strict "$APP"
 echo "built: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist"), $(lipo -archs "$APP/Contents/MacOS/miniMark")"
-if pgrep -x miniMark >/dev/null; then echo "miniMark is running; quit it first, then run again"; exit 3; fi
+# A copy left running by an earlier test or screenshot run (it lives in a temp build folder) is ours to
+# stop. A copy started from /Applications or anywhere else is the owner's: ask instead.
+for pid in $(pgrep -x miniMark || true); do
+  path="$(ps -o comm= -p "$pid" || true)"
+  echo "running: pid $pid $path"
+  case "$path" in
+    "${TMPDIR:-/tmp}"*minimark-*|*/build/m3-run/*|*/Build/Products/*) kill "$pid" 2>/dev/null && echo "stopped leftover test copy $pid" ;;
+    *) echo "miniMark is open from $path; quit it, then run again"; exit 3 ;;
+  esac
+done
+sleep 1
 if [[ -d /Applications/miniMark.app ]]; then
   BACK="$HOME/miniMark-rollback/$STAMP"; mkdir -p "$BACK"
   mv /Applications/miniMark.app "$BACK/miniMark.app"
