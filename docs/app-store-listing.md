@@ -49,7 +49,7 @@ MADE TO STAY OUT OF THE WAY
 • Your files stay on your Mac, where you save them
 • No account, no analytics, no tracking. miniMark collects nothing.
 
-Requires macOS 14 or later.
+Requires macOS 14 or later and a Mac with Apple silicon.
 
 ## Notes for App Review (1362 / 4000 bytes)
 
