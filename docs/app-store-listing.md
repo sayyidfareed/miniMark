@@ -13,10 +13,10 @@ Every claim below is something the build does. Character limits are Apple's; cou
 | Privacy policy URL | https://ideius.com/minimark/privacy/ | |
 | Marketing URL | https://ideius.com/minimark/ | |
 | Copyright | © 2026 Ideius LLC (owner answer, Oct 31: Ideius LLC; still to be checked against the seller name on the Apple account) | |
-| Age rating | answer the questionnaire; expected 4+ (no restricted content, not a browser) | |
-| App Privacy | Data Not Collected | |
+| Age rating | Answer the questionnaire: every content and capability question None/No, including social media and, from Nov 16, 2026, Shared Location and Dating and Relationships; expect 4+. WKWebView preview cannot navigate to pages, so Unrestricted Web Access is No (Apple's definition: users can navigate to any web page; a judgment, not Apple-confirmed). | |
+| App Privacy | App Privacy > Get Started > "No, we do not collect data from this app". Privacy policy link is also in the app: Help > Privacy Policy (5.1.1(i)). | |
 | Export compliance | no non-exempt encryption (Info.plist already says so) | |
-| Price | launch price, then $4.99 (the owner's plan) | |
+| Price | Base price $0.99. After the version is submitted, schedule a Global price change to $4.99 starting 30 days after release (Apple allows scheduling only after submission; dates up to the end of next year). No price anywhere in the metadata (2.3.7). | |
 | Screenshots | 2880x1800, no transparency: source and preview, light and dark | from the app's own snapshot mode |
 
 Policy checks applied: no other apps' names or trademarks in any field (2.3.7); no price, no "free" or "new" wording in the name or subtitle; screenshots show the app in use (2.3.3); no hidden features, so the screenshot mode is compiled out of the store build (2.3.1); keywords do not repeat words already in the name or subtitle.
@@ -55,7 +55,7 @@ Requires macOS 14 or later.
 
 miniMark is a document-based Markdown editor. No account or login is needed.
 
-To try it: open any .md file with File > Open (or File > New), press Shift-Command-P to switch between Source and Preview, use File > Export for TXT, RTF or HTML, and File > Print > Save as PDF for a PDF. A sample document that uses every supported feature is below; paste it into a new document.
+Help > miniMark Support and Help > Privacy Policy open the support and privacy pages. To try it: open any .md file with File > Open (or File > New), press Shift-Command-P to switch between Source and Preview, use File > Export for TXT, RTF or HTML, and File > Print > Save as PDF for a PDF. A sample document that uses every supported feature is below; paste it into a new document.
 
 The app makes no network requests of its own. The preview uses WebKit, which loads a picture from the web only if a document links to one, so the app has the outgoing-connections sandbox entitlement. It also has user-selected file read/write (to open and save documents) and app-scoped bookmarks: when a document refers to pictures in its folder, macOS asks the user once to allow that folder, and the bookmark remembers the choice. The print entitlement is for the standard Print and Save as PDF sheet.
 
