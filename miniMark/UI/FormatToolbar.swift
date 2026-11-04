@@ -68,6 +68,7 @@ struct FormatToolbar: View {
     }
     .buttonStyle(ToolbarIconButtonStyle())
     .help("\(help)  \(shortcut)")
+    .accessibilityLabel(help)
   }
 }
 

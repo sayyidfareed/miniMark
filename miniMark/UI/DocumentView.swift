@@ -28,6 +28,13 @@ struct DocumentView: View {
   @State private var previewMarkdown = ""
   @State private var previewTask: Task<Void, Never>?
   @State private var windowFileURL: URL?
+  @State private var editorController = MarkdownSourceEditorController()
+  @State private var textMetrics: DocumentTextMetrics
+  @State private var metricsTask: Task<Void, Never>?
+
+  /// Above this size (UTF-8 bytes) word and character counts are refreshed after a short pause in
+  /// typing instead of on every keystroke.
+  private static let deferredMetricsThreshold = 100_000
 
   init(
     document: Binding<MarkdownDocument>,
@@ -42,10 +49,12 @@ struct DocumentView: View {
     let savedMode = initialMode ?? UserDefaults.standard.string(forKey: Self.defaultModeKey)
       .flatMap(Mode.init(rawValue:)) ?? .source
     self._mode = State(initialValue: savedMode)
+    self._textMetrics = State(initialValue: DocumentTextMetrics(text: document.wrappedValue.text))
   }
 
+  /// Computed once per body evaluation from the cached text metrics.
   private var stats: DocumentStats {
-    DocumentStats.calculate(text: document.text, selection: selection)
+    DocumentStats(metrics: textMetrics, text: document.text, selection: selection)
   }
 
   private var defaultMode: Mode {
@@ -65,12 +74,20 @@ struct DocumentView: View {
       topBar
       Divider().opacity(0.6)
 
-      Group {
-        switch mode {
-        case .source:
-          MarkdownSourceEditor(text: $document.text, selection: $selection)
-            .transition(.opacity)
-        case .preview:
+      // The source editor stays in the hierarchy while the preview shows, so switching modes keeps
+      // its undo history, selection and scroll position.
+      ZStack {
+        MarkdownSourceEditor(
+          text: $document.text,
+          selection: $selection,
+          isActive: mode == .source,
+          controller: editorController
+        )
+        .opacity(mode == .source ? 1 : 0)
+        .allowsHitTesting(mode == .source)
+        .accessibilityHidden(mode != .source)
+
+        if mode == .preview {
           MarkdownPreview(markdown: previewMarkdown, fileURL: effectiveFileURL)
             .transition(.opacity)
         }
@@ -107,6 +124,7 @@ struct DocumentView: View {
       AppAppearanceController.apply(newValue)
     }
     .onChange(of: document.text) { _, newValue in
+      updateTextMetrics(for: newValue)
       schedulePreviewUpdate(for: newValue)
       exportCoordinator.updateCurrentContext(
         MarkdownExportContext(markdown: newValue, fileURL: effectiveFileURL)
@@ -117,6 +135,7 @@ struct DocumentView: View {
     }
     .onDisappear {
       previewTask?.cancel()
+      metricsTask?.cancel()
       exportCoordinator.updateCurrentContext(nil)
     }
     .focusedValue(
@@ -189,6 +208,10 @@ struct DocumentView: View {
   }
 
   private var statusBar: some View {
+    statusBar(for: stats)
+  }
+
+  private func statusBar(for stats: DocumentStats) -> some View {
     HStack(spacing: 0) {
       statItem(icon: "text.alignleft", text: "\(stats.wordCount) \(stats.wordCount == 1 ? "word" : "words")")
       statSeparator
@@ -230,9 +253,25 @@ struct DocumentView: View {
   }
 
   private func apply(_ command: MarkdownFormatCommand) {
+    // Through the live text view, so the change is undoable like typing.
+    if editorController.apply(command) { return }
     let result = MarkdownFormatter.apply(command, to: document.text, selection: selection)
     document.text = result.text
     selection = result.selection
+  }
+
+  private func updateTextMetrics(for text: String) {
+    metricsTask?.cancel()
+    guard text.utf8.count > Self.deferredMetricsThreshold else {
+      metricsTask = nil
+      textMetrics = DocumentTextMetrics(text: text)
+      return
+    }
+    metricsTask = Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(150))
+      guard !Task.isCancelled else { return }
+      textMetrics = DocumentTextMetrics(text: text)
+    }
   }
 
   private func schedulePreviewUpdate(for text: String) {
