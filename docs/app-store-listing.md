@@ -5,49 +5,51 @@ Every claim below is something the build does. Character limits are Apple's; cou
 | Field | Value | Count |
 |---|---|---|
 | Name | miniMark (fallback: miniMark: Markdown Editor) | 8 / 30 (fallback 25) |
-| Subtitle | Tiny, native Markdown editor | 28 / 30 |
-| Promotional text | Write in plain text, flip to a clean preview, export when it is ready. Tables, task lists, footnotes, math and diagrams. miniMark collects nothing. | 147 / 170 |
-| Keywords | `md,preview,mermaid,latex,math,footnotes,tables,readme,docs,notes,writer,export,pdf,rtf,diagram` | 94 / 100 bytes |
+| Subtitle | Markdown Editor with Preview | 28 / 30 |
+| Promotional text | Open any .md file, write in plain text, and press Shift-Command-P to see it beautifully rendered: math, diagrams, tables and highlighted code. Nothing to set up. | 161 / 170 |
+| Keywords | `md,readme,latex,math,mermaid,diagram,notes,writer,text,docs,table,footnote,pdf,export,viewer,code` | 97 / 100 bytes |
 | Primary / secondary category | Productivity / Developer Tools | matches Info.plist |
 | Support URL | https://ideius.com/minimark/support/ | |
 | Privacy policy URL | https://ideius.com/minimark/privacy/ | |
 | Marketing URL | https://ideius.com/minimark/ | |
-| Copyright | © 2026 Ideius LLC (owner answer, Oct 31: Ideius LLC; still to be checked against the seller name on the Apple account) | |
+| Copyright | 2026 ideius LLC (the seller name as App Store Connect shows it; Apple adds the ©) | |
 | Age rating | Answer the questionnaire: every content and capability question None/No, including social media and, from Nov 16, 2026, Shared Location and Dating and Relationships; expect 4+. WKWebView preview cannot navigate to pages, so Unrestricted Web Access is No (Apple's definition: users can navigate to any web page; a judgment, not Apple-confirmed). | |
 | App Privacy | App Privacy > Get Started > "No, we do not collect data from this app". Privacy policy link is also in the app: Help > Privacy Policy (5.1.1(i)). | |
 | Export compliance | no non-exempt encryption (Info.plist already says so) | |
 | Price | Base price $0.99. After the version is submitted, schedule a Global price change to $4.99 starting 30 days after release (Apple allows scheduling only after submission; dates up to the end of next year). No price anywhere in the metadata (2.3.7). | |
-| Screenshots | 2880x1800, no transparency: source and preview, light and dark | from the app's own snapshot mode |
+| Screenshots | Five 2880x1800 frames, no transparency, in this order: store-1 (tiny Markdown editor), store-2 (plain text you own), store-3 (math, diagrams and tables), store-4 (code), store-5 (day or night). Each is a headline over the real app window | from the app's own snapshot mode |
 
 Policy checks applied: no other apps' names or trademarks in any field (2.3.7); no price, no "free" or "new" wording in the name or subtitle; screenshots show the app in use (2.3.3); no hidden features, so the screenshot mode is compiled out of the store build (2.3.1); keywords do not repeat words already in the name or subtitle.
 
-## Description (1265 / 4000)
+## Description (1334 / 4000)
 
-miniMark is a small, native Markdown editor for the Mac. It opens ordinary .md and .markdown files, lets you edit them as plain text, and shows a clean rendered preview whenever you want one.
+Markdown should feel light. miniMark is a small, native Mac editor that opens any .md file, lets you write in plain text, and shows it beautifully rendered the moment you press Shift-Command-P.
+
+It is made for READMEs, docs, notes and the Markdown files your tools and AI assistants write, without an IDE, a web app or a notes database in the way.
 
 WRITE IN PLAIN TEXT
-• Source mode styles headings, lists, quotes, links, emphasis, inline code and code fences as you type
-• A toolbar for bold, italic, links, headings, lists, quotes, inline code and code blocks
-• Live counts for words, characters, reading time, line and column
+• Headings, lists, quotes, links, emphasis and code are styled as you type
+• A toolbar for bold, italic, links, headings, lists, quotes and code
+• Word, character and reading-time counts, plus line and column
 
-READ IT RENDERED
-• Press Shift-Command-P to flip between Source and Preview
-• Tables, task lists, footnotes, strikethrough, links, images and quotes
+SEE IT RENDERED
+• One shortcut flips between Source and Preview
+• Tables, task lists, footnotes, strikethrough, links and images
 • LaTeX math with $...$ and $$...$$
 • Mermaid diagrams
 • Code blocks with syntax highlighting and a copy button
-• Pictures stored next to your document appear in the preview
+• Pictures next to your document show up in the preview
 
-EXPORT WHEN IT IS READY
-• Save TXT, RTF or HTML from the File menu
-• Print, or save as PDF, from the standard Mac print sheet
-• Math and diagrams appear in HTML and PDF; RTF keeps math as its source text
+SHARE IT WHEN IT IS READY
+• Export TXT, RTF or HTML
+• Print, or save as PDF from the standard print sheet
+• Math and diagrams come along in HTML and PDF; RTF keeps math as source text
 
-MADE TO STAY OUT OF THE WAY
+STAYS OUT OF YOUR WAY
+• Your files stay ordinary files on your Mac, where you save them
 • Light, dark, or follow your Mac
 • Choose whether documents open in Source or Preview
-• Your files stay on your Mac, where you save them
-• No account, no analytics, no tracking. miniMark collects nothing.
+• No account, no analytics, no tracking
 
 Requires macOS 14 or later and a Mac with Apple silicon.
 
