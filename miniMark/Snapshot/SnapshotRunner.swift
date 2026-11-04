@@ -38,21 +38,40 @@ final class SnapshotRunner {
     NSApp.setActivationPolicy(.regular)
     logSession()
 
-    let variants: [(name: String, mode: DocumentView.Mode, appearance: NSAppearance.Name)] = [
-      ("source-light", .source, .aqua),
-      ("preview-light", .preview, .aqua),
-      ("source-dark", .source, .darkAqua),
-      ("preview-dark", .preview, .darkAqua)
+    // Window captures: (key, document, mode, dark). The four "raw" ones are the plain window pictures used
+    // on the landing page; the others only feed the App Store frames below.
+    let shots: [(key: String, doc: SnapshotSampleDocument.Sample, mode: DocumentView.Mode, dark: Bool, raw: Bool)] = [
+      ("source-light", .releaseNotes, .source, false, true),
+      ("preview-light", .releaseNotes, .preview, false, true),
+      ("source-dark", .releaseNotes, .source, true, true),
+      ("preview-dark", .releaseNotes, .preview, true, true),
+      ("orbits-light", .orbits, .preview, false, false),
+      ("orbits-dark", .orbits, .preview, true, false),
+      ("code-light", .code, .preview, false, false)
     ]
 
     // The app's own appearance setting decides the colours, so set it for each picture and put it back after.
     let defaults = UserDefaults.standard
     let savedAppearance = defaults.string(forKey: AppAppearance.storageKey)
-    for variant in variants {
-      let setting: AppAppearance = variant.appearance == .darkAqua ? .dark : .light
+    var windows: [String: CGImage] = [:]
+    for shot in shots {
+      let setting: AppAppearance = shot.dark ? .dark : .light
       defaults.set(setting.rawValue, forKey: AppAppearance.storageKey)
       AppAppearanceController.apply(setting.rawValue)
-      await capture(name: variant.name, mode: variant.mode, appearance: variant.appearance)
+      windows[shot.key] = await capture(
+        name: shot.key, sample: shot.doc, mode: shot.mode,
+        appearance: shot.dark ? .darkAqua : .aqua, writeRaw: shot.raw
+      )
+    }
+
+    // App Store frames: a headline over the real window, in the landing page's colours.
+    for frame in StoreFrame.all {
+      guard let window = windows[frame.window] else { log("\(frame.file): no window capture"); continue }
+      guard let image = compose(frame, window: window) else { log("\(frame.file): compose failed"); continue }
+      if let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
+        try? data.write(to: outputDirectory.appendingPathComponent("\(frame.file).png"))
+        log("\(frame.file): written")
+      }
     }
     if let savedAppearance {
       defaults.set(savedAppearance, forKey: AppAppearance.storageKey)
@@ -68,8 +87,14 @@ final class SnapshotRunner {
   private let pixelWidth = 2880
   private let pixelHeight = 1800
 
-  private func capture(name: String, mode: DocumentView.Mode, appearance: NSAppearance.Name) async {
-    let document = SnapshotDocumentBox(text: SnapshotSampleDocument.markdown)
+  /// Captures one window. Writes the cropped window PNG when `writeRaw` is set and returns the full window
+  /// image (title bar and rounded corners included) for the App Store frames.
+  private func capture(
+    name: String, sample: SnapshotSampleDocument.Sample, mode: DocumentView.Mode,
+    appearance: NSAppearance.Name, writeRaw: Bool
+  ) async -> CGImage? {
+    lastFullWindow = nil
+    let document = SnapshotDocumentBox(text: sample.markdown)
     let root = SnapshotHost(box: document, coordinator: coordinator, mode: mode)
     let hosting = NSHostingView(rootView: root)
 
@@ -79,7 +104,7 @@ final class SnapshotRunner {
       backing: .buffered,
       defer: false
     )
-    window.title = "Release notes.md"
+    window.title = sample.title
     window.appearance = NSAppearance(named: appearance)
     window.contentView = hosting
     window.setContentSize(windowSize)
@@ -97,15 +122,18 @@ final class SnapshotRunner {
     guard let image = await renderImage(of: hosting, in: window, label: name) else {
       log("\(name): no image produced")
       window.orderOut(nil)
-      return
+      return nil
     }
 
-    let rep = NSBitmapImageRep(cgImage: image)
-    if let data = rep.representation(using: .png, properties: [:]) {
+    if writeRaw, let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
       try? data.write(to: outputDirectory.appendingPathComponent("\(name).png"))
     }
     window.orderOut(nil)
+    return lastFullWindow
   }
+
+  /// The most recent uncropped window image, kept by `windowImage(of:)`.
+  private var lastFullWindow: CGImage?
 
   /// Prints a line the run script keeps in snapshot.log, so a failed capture explains itself.
   private func log(_ message: String) {
@@ -169,6 +197,7 @@ final class SnapshotRunner {
     // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
     guard let full = function(CGRect.null, 8, windowID, 1 | 8)?.takeRetainedValue() else { return nil }
     log("window image \(full.width)x\(full.height)")
+    lastFullWindow = full
     let crop = full.height - pixelHeight
     guard full.width == pixelWidth, crop >= 0,
       let content = full.cropping(to: CGRect(x: 0, y: crop, width: pixelWidth, height: pixelHeight))
@@ -281,6 +310,87 @@ final class SnapshotRunner {
     }
   }
 
+  // MARK: App Store frames
+
+  private func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
+    NSColor(
+      srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+      blue: CGFloat(hex & 0xFF) / 255, alpha: alpha
+    )
+  }
+
+  /// Draws one 2880x1800 App Store picture: background, a one-line headline with one phrase marked in the
+  /// highlighter yellow of the landing page, a smaller line under it, and the real window below with a shadow.
+  private func compose(_ frame: StoreFrame, window: CGImage) -> CGImage? {
+    guard let context = makeContext() else { return nil }
+    let width = CGFloat(pixelWidth), height = CGFloat(pixelHeight)
+    let background = frame.dark ? color(0x0E1012) : color(0xF4F5F2)
+    let ink = frame.dark ? color(0xEDEFEA) : color(0x111418)
+    let muted = frame.dark ? color(0x9CA5AC) : color(0x556069)
+    let marker = color(0xFFE14D)
+
+    context.setFillColor(background.cgColor)
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+    let graphics = NSGraphicsContext(cgContext: context, flipped: false)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = graphics
+
+    // Headline, shrunk if it would run wider than the margins.
+    var size: CGFloat = 132
+    func pieces(_ size: CGFloat) -> [NSAttributedString] {
+      frame.headline.map { part in
+        NSAttributedString(string: part.text, attributes: [
+          .font: NSFont.systemFont(ofSize: size, weight: .bold),
+          .foregroundColor: part.marked ? color(0x111418) : ink,
+          .kern: -size * 0.02
+        ])
+      }
+    }
+    var parts = pieces(size)
+    while parts.reduce(0, { $0 + $1.size().width }) > width - 280, size > 80 {
+      size -= 4
+      parts = pieces(size)
+    }
+    let total = parts.reduce(0) { $0 + $1.size().width }
+    let baselineTop: CGFloat = 250
+    var x = (width - total) / 2
+    let lineY = height - baselineTop - size * 0.8
+    for (part, piece) in zip(frame.headline, parts) {
+      let pieceSize = piece.size()
+      if part.marked {
+        let rect = NSRect(x: x - size * 0.12, y: lineY - size * 0.12, width: pieceSize.width + size * 0.24, height: size * 0.95)
+        marker.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: size * 0.12, yRadius: size * 0.12).fill()
+      }
+      piece.draw(at: NSPoint(x: x, y: lineY - size * 0.2))
+      x += pieceSize.width
+    }
+
+    // The line under the headline.
+    let sub = NSAttributedString(string: frame.subline, attributes: [
+      .font: NSFont.systemFont(ofSize: 54, weight: .regular),
+      .foregroundColor: muted
+    ])
+    let subSize = sub.size()
+    sub.draw(at: NSPoint(x: (width - subSize.width) / 2, y: lineY - size * 0.2 - 110))
+    NSGraphicsContext.restoreGraphicsState()
+
+    // The window, centred, running off the bottom edge, with a soft shadow.
+    let windowWidth: CGFloat = 2360
+    let scale = windowWidth / CGFloat(window.width)
+    let windowHeight = CGFloat(window.height) * scale
+    let top: CGFloat = 560
+    let rect = CGRect(x: (width - windowWidth) / 2, y: height - top - windowHeight, width: windowWidth, height: windowHeight)
+    context.saveGState()
+    context.setShadow(offset: CGSize(width: 0, height: -24), blur: 90, color: NSColor.black.withAlphaComponent(frame.dark ? 0.55 : 0.22).cgColor)
+    context.interpolationQuality = .high
+    context.draw(window, in: rect)
+    context.restoreGState()
+
+    return context.makeImage()
+  }
+
   private func webViews(in view: NSView) -> [WKWebView] {
     var found: [WKWebView] = []
     if let webView = view as? WKWebView { found.append(webView) }
@@ -312,5 +422,42 @@ private struct SnapshotHost: View {
     )
     .frame(width: 1440, height: 900)
   }
+}
+/// One App Store picture: which window capture it shows and the words over it. Claims must be things the
+/// app does (guideline 2.3.14: no unverifiable claims, no prices).
+private struct StoreFrame {
+  let file: String
+  let window: String
+  let dark: Bool
+  let headline: [(text: String, marked: Bool)]
+  let subline: String
+
+  static let all: [StoreFrame] = [
+    StoreFrame(
+      file: "store-1", window: "preview-light", dark: false,
+      headline: [("The tiny ", false), ("Markdown", true), (" editor for your Mac", false)],
+      subline: "Write in plain text. Press Shift-Command-P to see it beautifully rendered."
+    ),
+    StoreFrame(
+      file: "store-2", window: "source-light", dark: false,
+      headline: [("Plain text you ", false), ("own", true)],
+      subline: "Ordinary .md files, styled as you type. No account, no library, no lock-in."
+    ),
+    StoreFrame(
+      file: "store-3", window: "orbits-light", dark: false,
+      headline: [("Math, diagrams and tables, ", false), ("built in", true)],
+      subline: "LaTeX, Mermaid diagrams, task lists, footnotes and tables render right in the preview."
+    ),
+    StoreFrame(
+      file: "store-4", window: "code-light", dark: false,
+      headline: [("Code that ", false), ("reads", true), (" like code", false)],
+      subline: "Syntax highlighting in fenced code blocks, with a copy button on each one."
+    ),
+    StoreFrame(
+      file: "store-5", window: "orbits-dark", dark: true,
+      headline: [("Easy on the eyes, ", false), ("day or night", true)],
+      subline: "Light, dark or follow your Mac. Export to PDF, HTML, RTF or plain text."
+    )
+  ]
 }
 #endif
