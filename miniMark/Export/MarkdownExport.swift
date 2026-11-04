@@ -146,9 +146,9 @@ final class MarkdownExportCoordinator {
   }
 
   func printDocument(_ context: MarkdownExportContext) {
-    // One print at a time: a second Print while the first is still preparing would drop the first
-    // controller without closing its hidden window.
-    guard printController == nil else { return }
+    // One print at a time: a second Print while the first is still preparing replaces it, after
+    // closing the first one's hidden window, so a print that never finished cannot block printing.
+    printController?.cancel()
     let controller = MarkdownPrintController { [weak self] in
       self?.printController = nil
     }
@@ -776,6 +776,10 @@ private final class MarkdownPrintController: NSObject, WKNavigationDelegate {
     success: Bool,
     contextInfo: UnsafeMutableRawPointer?
   ) {
+    finish()
+  }
+
+  func cancel() {
     finish()
   }
 
