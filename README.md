@@ -99,29 +99,6 @@ xcodebuild \
 
 The test suite currently covers document encoding/decoding, formatting behavior, preview helpers, and document stats.
 
-## Package A DMG
-
-```sh
-./scripts/build_dmg.sh
-```
-
-That creates:
-
-```text
-build/miniMark.dmg
-```
-
-The script builds the release app, stages it with an `/Applications` shortcut, and creates a compressed disk image.
-
-For release builds, the script also accepts CI-friendly overrides:
-
-```sh
-RELEASE_VERSION=0.1.0 \
-BUILD_NUMBER=42 \
-OUTPUT="$PWD/build/miniMark-0.1.0.dmg" \
-./scripts/build_dmg.sh
-```
-
 ## Project Map
 
 ```text
@@ -136,7 +113,7 @@ miniMark/
   UI/           Main document view and formatting toolbar
 
 miniMarkTests/  Unit tests
-scripts/        Icon and DMG helpers
+scripts/        Icon helper and Mac App Store build scripts
 ```
 
 ## Design Notes
