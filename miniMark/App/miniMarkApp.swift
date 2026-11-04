@@ -70,6 +70,17 @@ struct AppearanceCommands: Commands {
   }
 }
 
+/// Apple's guideline 5.1.1(i) wants the privacy policy reachable from inside the app, and the Support URL
+/// should be easy to find. The Help menu has no help book, so it carries these two links instead.
+struct HelpCommands: Commands {
+  var body: some Commands {
+    CommandGroup(replacing: .help) {
+      Link("miniMark Support", destination: URL(string: "https://ideius.com/minimark/support")!)
+      Link("Privacy Policy", destination: URL(string: "https://ideius.com/minimark/privacy")!)
+    }
+  }
+}
+
 @main
 struct miniMarkApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -86,6 +97,7 @@ struct miniMarkApp: App {
     .commands {
       MarkdownExportCommands(coordinator: exportCoordinator)
       AppearanceCommands()
+      HelpCommands()
     }
   }
 }
