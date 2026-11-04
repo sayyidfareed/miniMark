@@ -114,10 +114,10 @@ if [[ -n "$SHOTS" && -d "$SHOTS" ]]; then
 fi
 
 count=$(ls "$OUT"/screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
-(( count == 4 )) || STATUS=1
+(( count == 9 )) || STATUS=1
 {
   echo "screenshots:"
-  (( count == 4 )) || echo "  expected 4 screenshots, found $count"
+  (( count == 9 )) || echo "  expected 9 pictures (4 window, 5 App Store), found $count"
   for f in "$OUT"/screenshots/*.png; do
     [[ -e "$f" ]] || { echo "  none written"; break; }
     echo "  $(basename "$f") $(sips -g pixelWidth -g pixelHeight -g hasAlpha "$f" | tail -n 3 | tr -s ' \n' ' ')"
