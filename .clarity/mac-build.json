@@ -44,6 +44,15 @@
    ],
    "output": "build/archive-check.txt",
    "workspace": "persistent"
+  },
+  "release-script-dry": {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "set -euo pipefail; mkdir -p build; DRY=1 release/archive-and-upload.sh export > build/release-dry.txt 2>&1 || { tail -30 build/release-dry.txt; exit 1; }; tail -8 build/release-dry.txt"
+   ],
+   "output": "build/release-dry.txt",
+   "workspace": "persistent"
   }
  }
 }
