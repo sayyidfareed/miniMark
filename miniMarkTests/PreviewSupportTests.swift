@@ -246,7 +246,9 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertTrue(html.contains("A--&gt;B"))
     XCTAssertTrue(html.contains("mermaid.initialize"))
     XCTAssertTrue(html.contains("securityLevel: 'strict'"))
-    XCTAssertTrue(html.contains("querySelector: '.mermaid'"))
+    XCTAssertTrue(html.contains("querySelectorAll('.mermaid')"))
+    // Diagrams are redrawn when the appearance changes, so System mode follows macOS light and dark.
+    XCTAssertTrue(html.contains("addEventListener('change'"))
     XCTAssertFalse(html.contains(#"class="language-mermaid""#))
   }
 

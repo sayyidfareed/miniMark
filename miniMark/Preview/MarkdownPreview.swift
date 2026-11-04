@@ -699,31 +699,43 @@ struct MarkdownPreviewHTMLRenderer {
             return;
           }
 
-          var isDark = window.matchMedia &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches;
-          mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: 'strict',
-            theme: isDark ? 'dark' : 'default',
-            themeVariables: isDark ? {
-              lineColor: '#d6dde8',
-              signalColor: '#d6dde8',
-              signalTextColor: '#f2f2f2'
-            } : {
-              lineColor: '#24292f',
-              signalColor: '#24292f'
-            }
-          });
+          // Keep each diagram's source so it can be drawn again when the appearance changes
+          // (System mode follows macOS light and dark; the diagram theme has to follow too).
+          var nodes = Array.prototype.slice.call(document.querySelectorAll('.mermaid'));
+          nodes.forEach(function (node) { node.dataset.mermaidSource = node.textContent; });
+          var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
-          var rendering = mermaid.run({
-            querySelector: '.mermaid',
-            suppressErrors: true
-          });
+          function render(isDark) {
+            mermaid.initialize({
+              startOnLoad: false,
+              securityLevel: 'strict',
+              theme: isDark ? 'dark' : 'default',
+              themeVariables: isDark ? {
+                lineColor: '#d6dde8',
+                signalColor: '#d6dde8',
+                signalTextColor: '#f2f2f2'
+              } : {
+                lineColor: '#24292f',
+                signalColor: '#24292f'
+              }
+            });
+            nodes.forEach(function (node) {
+              node.removeAttribute('data-processed');
+              node.textContent = node.dataset.mermaidSource;
+            });
+            return mermaid.run({ nodes: nodes, suppressErrors: true });
+          }
+
+          var rendering = render(!!(media && media.matches));
           Promise.resolve(rendering).then(function () {
             document.body.dataset.mermaidReady = 'ready';
           }, function () {
             document.body.dataset.mermaidReady = 'failed';
           });
+
+          if (media && media.addEventListener && nodes.length) {
+            media.addEventListener('change', function (event) { render(event.matches); });
+          }
         })();
       </script>
     """
