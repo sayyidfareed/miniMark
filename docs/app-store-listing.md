@@ -13,11 +13,11 @@ Every claim below is something the build does. Character limits are Apple's; cou
 | Privacy policy URL | https://ideius.com/minimark/privacy/ | |
 | Marketing URL | https://ideius.com/minimark/ | |
 | Copyright | 2026 ideius LLC (the seller name as App Store Connect shows it; Apple adds the ©) | |
-| Age rating | Answer the questionnaire: every content and capability question None/No, including social media and, from Nov 16, 2026, Shared Location and Dating and Relationships; expect 4+. WKWebView preview cannot navigate to pages, so Unrestricted Web Access is No (Apple's definition: users can navigate to any web page; a judgment, not Apple-confirmed). | |
+| Age rating | Answer the questionnaire: every content and capability question None/No, including social media and, from Nov 16, 2026, Shared Location and Dating and Relationships; expect 4+. The preview cannot browse: clicking a link opens it in the user's default browser, outside the app, so Unrestricted Web Access is No (Apple's definition: users can navigate to any web page within the app or freely browse the web; a judgment, not Apple-confirmed). | |
 | App Privacy | App Privacy > Get Started > "No, we do not collect data from this app". Privacy policy link is also in the app: Help > Privacy Policy (5.1.1(i)). | |
 | Export compliance | no non-exempt encryption (Info.plist already says so) | |
 | Price | Base price $0.99. After the version is submitted, schedule a Global price change to $4.99 starting 30 days after release (Apple allows scheduling only after submission; dates up to the end of next year). No price anywhere in the metadata (2.3.7). | |
-| Screenshots | Five 2880x1800 frames, no transparency, in this order: store-1 (tiny Markdown editor), store-2 (plain text you own), store-3 (math, diagrams and tables), store-4 (code), store-5 (day or night). Each is a headline over the real app window | from the app's own snapshot mode |
+| Screenshots | Five 2880x1800 frames, no transparency, in this order: store-1 (tiny Markdown editor), store-2 (plain text you own), store-3 (math, diagrams and tables), store-4 (code), store-5 (day or night; subline says export TXT, RTF or HTML, or print to PDF). Each is a headline over the real app window | from the app's own snapshot mode |
 
 Policy checks applied: no other apps' names or trademarks in any field (2.3.7); no price, no "free" or "new" wording in the name or subtitle; screenshots show the app in use (2.3.3); no hidden features, so the screenshot mode is compiled out of the store build (2.3.1); keywords do not repeat words already in the name or subtitle.
 

@@ -461,7 +461,7 @@ private struct StoreFrame {
     StoreFrame(
       file: "store-5", window: "orbits-dark", dark: true,
       headline: [("Easy on the eyes, ", false), ("day or night", true)],
-      subline: "Light, dark or follow your Mac. Export to PDF, HTML, RTF or plain text."
+      subline: "Light, dark or follow your Mac. Export TXT, RTF or HTML, or print to PDF."
     )
   ]
 }
