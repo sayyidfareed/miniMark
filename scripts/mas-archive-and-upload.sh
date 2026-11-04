@@ -27,7 +27,10 @@ OUT="$PWD/build/appstore/$STAMP"
 mkdir -p "$OUT"
 echo "Output folder: $OUT"
 
-SIGNING=(DEVELOPMENT_TEAM="$TEAM" -allowProvisioningUpdates)
+# The archive itself is signed ad hoc: a headless Mac has no development certificate and cannot unlock a
+# keychain without someone at the screen. The export step re-signs it for the Mac App Store with Apple's
+# cloud-managed distribution certificate, which needs no private key on this Mac.
+SIGNING=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM="$TEAM")
 AUTH=()
 CONF="$HOME/.appstoreconnect/minimark.conf"
 if [[ -f "$CONF" ]]; then
@@ -51,7 +54,7 @@ fi
 echo "== 1/3 Archive (version from the project, build $BUILD)"
 xcodebuild -project miniMark.xcodeproj -scheme miniMark -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$OUT/miniMark.xcarchive" \
-  CURRENT_PROJECT_VERSION="$BUILD" "${SIGNING[@]}" ${AUTH[@]+"${AUTH[@]}"} archive
+  CURRENT_PROJECT_VERSION="$BUILD" "${SIGNING[@]}" archive
 
 APP="$OUT/miniMark.xcarchive/Products/Applications/miniMark.app"
 echo "architectures: $(lipo -archs "$APP/Contents/MacOS/miniMark")"
