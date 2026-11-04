@@ -56,18 +56,24 @@ struct MarkdownPreviewHTMLRenderer {
   ) -> String {
     let baseURL = baseURL.map { URL(fileURLWithPath: $0.path, isDirectory: true) }
     let body = renderBodyHTML(for: markdown, baseURL: baseURL, mode: mode)
-    let baseElement = baseURL.map { #"<base href="\#($0.absoluteString)">"# } ?? ""
+    // Only the live preview and printing load the page from the document's folder. An exported
+    // HTML or rich-text file must not carry the author's local folder path.
+    let usesBaseElement = mode == .preview || mode == .print
+    let baseElement = usesBaseElement ? (baseURL.map { #"<base href="\#(escapeHTMLAttribute($0.absoluteString))">"# } ?? "") : ""
     let bodyClass = mode.isPreview ? "" : #" class="export-document""#
     let exportStyles = mode.isPreview ? "" : (mode.isRichText ? richTextDocumentStyles : exportDocumentStyles)
+    // The preview follows the app's appearance; exported, printed and rich-text documents are always light.
+    let colorScheme = mode.isPreview ? "light dark" : "light"
+    let darkStyles = mode.isPreview ? previewDarkStyles : ""
     let hasMath = !mode.isRichText && (body.contains("class=\"math-inline\"") || body.contains("class=\"math-block\""))
     let hasHighlightableCode = !mode.isRichText && body.contains("<code class=\"language-")
     let hasFootnoteLinks = !mode.isRichText && body.contains("data-scroll=")
     let script = [
       mode.isPreview ? copyButtonScript : "",
       hasFootnoteLinks ? footnoteScript : "",
-      mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript : "",
+      mode.rendersMermaid && containsMermaidFence(in: markdown) ? mermaidScript(for: mode) : "",
       hasMath ? (mathAssets ?? "") : "",
-      hasHighlightableCode ? (highlightAssets ?? "") : ""
+      hasHighlightableCode ? (highlightAssets(for: mode) ?? "") : ""
     ]
     .filter { !$0.isEmpty }
     .joined(separator: "\n")
@@ -82,7 +88,7 @@ struct MarkdownPreviewHTMLRenderer {
       \(baseElement)
       <style>
         :root {
-          color-scheme: light dark;
+          color-scheme: \(colorScheme);
           --text: #111111;
           --muted: #646464;
           --border: #d8d8d8;
@@ -92,17 +98,6 @@ struct MarkdownPreviewHTMLRenderer {
           --preview-font-size: clamp(16px, calc(14.2px + 0.22vw), 20px);
           --preview-content-width: clamp(720px, 70vw, 62em);
           --preview-inline-padding: clamp(18px, 2.2vw, 36px);
-        }
-
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --text: #f2f2f2;
-            --muted: #a6a6a6;
-            --border: #3f3f3f;
-            --code-bg: #242424;
-            --page-bg: #1e1e1e;
-            --link: #6aa7ff;
-          }
         }
 
         html,
@@ -262,12 +257,6 @@ struct MarkdownPreviewHTMLRenderer {
           user-select: none;
         }
 
-        @media (prefers-color-scheme: dark) {
-          .codeblock-header {
-            background: rgba(255, 255, 255, 0.04);
-          }
-        }
-
         .codeblock-lang {
           color: var(--muted);
           font-weight: 600;
@@ -322,12 +311,6 @@ struct MarkdownPreviewHTMLRenderer {
           color: var(--text);
         }
 
-        @media (prefers-color-scheme: dark) {
-          .codeblock-copy:hover {
-            background: rgba(255, 255, 255, 0.08);
-          }
-        }
-
         .codeblock-copy.is-copied {
           color: #1a7f37;
         }
@@ -350,12 +333,6 @@ struct MarkdownPreviewHTMLRenderer {
           transform: scale(0.8);
         }
 
-        @media (prefers-color-scheme: dark) {
-          .codeblock-copy.is-copied {
-            color: #4ac26b;
-          }
-        }
-
         .codeblock pre {
           margin: 0;
           border: 0;
@@ -376,21 +353,11 @@ struct MarkdownPreviewHTMLRenderer {
           height: auto;
         }
 
-        @media (prefers-color-scheme: dark) {
-          .mermaid .flowchart-link,
-          .mermaid .edgePath path,
-          .mermaid .messageLine0,
-          .mermaid .messageLine1,
-          .mermaid .actor-line,
-          .mermaid line,
-          .mermaid polyline {
-            stroke: #d6dde8 !important;
-          }
-
-          .mermaid marker path {
-            fill: #d6dde8 !important;
-            stroke: #d6dde8 !important;
-          }
+        hr {
+          height: 0;
+          margin: 1.4em 0;
+          border: 0;
+          border-top: 1px solid var(--border);
         }
 
         blockquote {
@@ -420,6 +387,7 @@ struct MarkdownPreviewHTMLRenderer {
           font-weight: 650;
         }
 
+        \(darkStyles)
         \(exportStyles)
       </style>
     </head>
@@ -452,6 +420,48 @@ struct MarkdownPreviewHTMLRenderer {
           if (target) target.scrollIntoView();
         });
       </script>
+  """
+
+  /// Dark-appearance rules, used only by the live preview. Exported, printed and rich-text
+  /// documents are always light, so they never carry these.
+  private static let previewDarkStyles = """
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --text: #f2f2f2;
+            --muted: #a6a6a6;
+            --border: #3f3f3f;
+            --code-bg: #242424;
+            --page-bg: #1e1e1e;
+            --link: #6aa7ff;
+          }
+
+          .codeblock-header {
+            background: rgba(255, 255, 255, 0.04);
+          }
+
+          .codeblock-copy:hover {
+            background: rgba(255, 255, 255, 0.08);
+          }
+
+          .codeblock-copy.is-copied {
+            color: #4ac26b;
+          }
+
+          .mermaid .flowchart-link,
+          .mermaid .edgePath path,
+          .mermaid .messageLine0,
+          .mermaid .messageLine1,
+          .mermaid .actor-line,
+          .mermaid line,
+          .mermaid polyline {
+            stroke: #d6dde8 !important;
+          }
+
+          .mermaid marker path {
+            fill: #d6dde8 !important;
+            stroke: #d6dde8 !important;
+          }
+        }
   """
 
   private static let exportDocumentStyles = """
@@ -686,8 +696,15 @@ struct MarkdownPreviewHTMLRenderer {
       </script>
   """
 
-  private static var mermaidScript: String {
+  /// The diagram theme is chosen once per page load. The live preview reads the current appearance
+  /// and is reloaded by `MarkdownWebPreview` whenever its effective appearance changes (System mode
+  /// following macOS light and dark included). Export, print and rich text always draw light diagrams.
+  private static func mermaidScript(for mode: RenderMode) -> String {
     guard let source = mermaidTinySource else { return "" }
+
+    let isDarkExpression = mode.isPreview
+      ? "!!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)"
+      : "false"
 
     return """
       <script nonce="\(scriptNonce)">
@@ -699,13 +716,9 @@ struct MarkdownPreviewHTMLRenderer {
             return;
           }
 
-          // Keep each diagram's source so it can be drawn again when the appearance changes
-          // (System mode follows macOS light and dark; the diagram theme has to follow too).
           var nodes = Array.prototype.slice.call(document.querySelectorAll('.mermaid'));
-          nodes.forEach(function (node) { node.dataset.mermaidSource = node.textContent; });
-          var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-
-          function render(isDark) {
+          var isDark = \(isDarkExpression);
+          try {
             mermaid.initialize({
               startOnLoad: false,
               securityLevel: 'strict',
@@ -719,22 +732,13 @@ struct MarkdownPreviewHTMLRenderer {
                 signalColor: '#24292f'
               }
             });
-            nodes.forEach(function (node) {
-              node.removeAttribute('data-processed');
-              node.textContent = node.dataset.mermaidSource;
+            Promise.resolve(mermaid.run({ nodes: nodes, suppressErrors: true })).then(function () {
+              document.body.dataset.mermaidReady = 'ready';
+            }, function () {
+              document.body.dataset.mermaidReady = 'failed';
             });
-            return mermaid.run({ nodes: nodes, suppressErrors: true });
-          }
-
-          var rendering = render(!!(media && media.matches));
-          Promise.resolve(rendering).then(function () {
-            document.body.dataset.mermaidReady = 'ready';
-          }, function () {
+          } catch (error) {
             document.body.dataset.mermaidReady = 'failed';
-          });
-
-          if (media && media.addEventListener && nodes.length) {
-            media.addEventListener('change', function (event) { render(event.matches); });
           }
         })();
       </script>
@@ -767,141 +771,16 @@ struct MarkdownPreviewHTMLRenderer {
     let lines = extracted.lines
     let footnotes = FootnoteIndex(definitions: extracted.definitions)
 
+    let context = RenderContext(baseURL: baseURL, mode: mode, footnotes: footnotes)
     var output: [String] = []
-    var paragraph: [String] = []
-    var listKind: String?
-    var codeFence: (language: String, lines: [String])?
-    var index = 0
+    var bodyLines = lines
 
-    func closeList() {
-      guard let kind = listKind else { return }
-      output.append("</\(kind)>")
-      listKind = nil
+    if let frontMatter = yamlFrontMatter(in: bodyLines) {
+      output.append(renderCodeBlock(language: "yaml", content: frontMatter.content, mode: mode))
+      bodyLines = Array(bodyLines[frontMatter.nextIndex...])
     }
 
-    func flushParagraph() {
-      guard !paragraph.isEmpty else { return }
-      output.append(
-        "<p>\(renderInline(paragraph.joined(separator: " "), baseURL: baseURL, mode: mode, footnotes: footnotes))</p>"
-      )
-      paragraph.removeAll()
-    }
-
-    while index < lines.count {
-      let line = lines[index]
-      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-
-      if var fence = codeFence {
-        if trimmed.hasPrefix("```") {
-          output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n"), mode: mode))
-          codeFence = nil
-        } else {
-          fence.lines.append(line)
-          codeFence = fence
-        }
-        index += 1
-        continue
-      }
-
-      if trimmed.isEmpty {
-        flushParagraph()
-        closeList()
-        index += 1
-        continue
-      }
-
-      if trimmed.hasPrefix("```") {
-        flushParagraph()
-        closeList()
-        let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-        codeFence = (language, [])
-        index += 1
-        continue
-      }
-
-      if let math = mathBlock(from: lines, startingAt: index) {
-        flushParagraph()
-        closeList()
-        output.append(mathBlockHTML(tex: math.tex, mode: mode))
-        index = math.nextIndex
-        continue
-      }
-
-      if isRawHTMLBlockStart(trimmed) {
-        flushParagraph()
-        closeList()
-        let rawBlock = collectRawHTMLBlock(from: lines, startingAt: index)
-        output.append(renderRawHTML(rawBlock.html, baseURL: baseURL, mode: mode))
-        index = rawBlock.nextIndex
-        continue
-      }
-
-      if let table = markdownTable(from: lines, startingAt: index, baseURL: baseURL, mode: mode) {
-        flushParagraph()
-        closeList()
-        output.append(table.html)
-        index = table.nextIndex
-        continue
-      }
-
-      if let heading = markdownHeading(from: trimmed) {
-        flushParagraph()
-        closeList()
-        output.append("<h\(heading.level)>\(renderInline(heading.text, baseURL: baseURL, mode: mode, footnotes: footnotes))</h\(heading.level)>")
-        index += 1
-        continue
-      }
-
-      if let item = unorderedListItem(from: trimmed) {
-        flushParagraph()
-        if listKind != "ul" {
-          closeList()
-          listKind = "ul"
-          output.append("<ul>")
-        }
-        if let task = taskListItem(from: item) {
-          let box = taskCheckbox(checked: task.checked, mode: mode)
-          output.append(
-            "<li class=\"task-list-item\">\(box) \(renderInline(task.text, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>"
-          )
-        } else {
-          output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>")
-        }
-        index += 1
-        continue
-      }
-
-      if let item = orderedListItem(from: trimmed) {
-        flushParagraph()
-        if listKind != "ol" {
-          closeList()
-          listKind = "ol"
-          output.append("<ol>")
-        }
-        output.append("<li>\(renderInline(item, baseURL: baseURL, mode: mode, footnotes: footnotes))</li>")
-        index += 1
-        continue
-      }
-
-      if trimmed.hasPrefix(">") {
-        flushParagraph()
-        closeList()
-        let quote = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        output.append("<blockquote><p>\(renderInline(String(quote), baseURL: baseURL, mode: mode, footnotes: footnotes))</p></blockquote>")
-        index += 1
-        continue
-      }
-
-      closeList()
-      paragraph.append(trimmed)
-      index += 1
-    }
-
-    if let fence = codeFence {
-      output.append(renderCodeBlock(language: fence.language, content: fence.lines.joined(separator: "\n"), mode: mode))
-    }
-    flushParagraph()
-    closeList()
+    output += renderBlocks(bodyLines, context: context)
 
     if !footnotes.order.isEmpty {
       let items = footnotes.order.map { id -> String in
@@ -920,6 +799,474 @@ struct MarkdownPreviewHTMLRenderer {
     }
 
     return output.joined(separator: "\n")
+  }
+
+  // MARK: Blocks
+
+  /// Marks a hard line break inside paragraph text until inline rendering turns it into `<br>`.
+  /// A private-use character, removed from document text so it can never come from the document.
+  private static let hardBreakMarker = "\u{E002}"
+
+  /// State shared by every block of one document: render settings, footnote numbering and the
+  /// heading anchors already handed out.
+  private final class RenderContext {
+    let baseURL: URL?
+    let mode: RenderMode
+    let footnotes: FootnoteIndex
+    private var usedHeadingIDs = Set<String>()
+
+    init(baseURL: URL?, mode: RenderMode, footnotes: FootnoteIndex) {
+      self.baseURL = baseURL
+      self.mode = mode
+      self.footnotes = footnotes
+    }
+
+    func inline(_ markdown: String, hardBreaks: Bool = false) -> String {
+      MarkdownPreviewHTMLRenderer.renderInline(
+        markdown,
+        baseURL: baseURL,
+        mode: mode,
+        footnotes: footnotes,
+        hardBreaks: hardBreaks
+      )
+    }
+
+    /// GitHub-style anchors: `## Hello, World!` becomes `hello-world`; repeats get `-1`, `-2`, ...
+    func uniqueHeadingID(forHTML html: String) -> String? {
+      let base = MarkdownPreviewHTMLRenderer.headingSlug(fromHTML: html)
+      guard !base.isEmpty else { return nil }
+
+      var candidate = base
+      var suffix = 1
+      while usedHeadingIDs.contains(candidate) {
+        candidate = "\(base)-\(suffix)"
+        suffix += 1
+      }
+      usedHeadingIDs.insert(candidate)
+      return candidate
+    }
+  }
+
+  /// Renders a run of lines as block HTML. Block quotes and list items call this again for their
+  /// own contents. `tight` leaves paragraphs unwrapped, as in a list without blank lines.
+  private static func renderBlocks(_ lines: [String], context: RenderContext, tight: Bool = false) -> [String] {
+    var output: [String] = []
+    var paragraph: [String] = []
+    var index = 0
+
+    func flushParagraph() {
+      guard !paragraph.isEmpty else { return }
+      let html = paragraphHTML(paragraph, context: context)
+      output.append(tight ? html : "<p>\(html)</p>")
+      paragraph.removeAll()
+    }
+
+    while index < lines.count {
+      let line = lines[index]
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+      if let fence = codeFenceOpening(trimmed) {
+        flushParagraph()
+        var content: [String] = []
+        var cursor = index + 1
+        while cursor < lines.count, !isCodeFenceClosing(lines[cursor], for: fence) {
+          content.append(lines[cursor])
+          cursor += 1
+        }
+        output.append(renderCodeBlock(language: fence.info, content: content.joined(separator: "\n"), mode: context.mode))
+        index = min(cursor + 1, lines.count)
+        continue
+      }
+
+      if trimmed.isEmpty {
+        flushParagraph()
+        index += 1
+        continue
+      }
+
+      if !paragraph.isEmpty, let level = setextHeadingLevel(trimmed) {
+        let text = paragraph.map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+        paragraph.removeAll()
+        output.append(headingHTML(level: level, text: text, context: context))
+        index += 1
+        continue
+      }
+
+      if isThematicBreak(trimmed) {
+        flushParagraph()
+        output.append("<hr>")
+        index += 1
+        continue
+      }
+
+      if let math = mathBlock(from: lines, startingAt: index) {
+        flushParagraph()
+        output.append(mathBlockHTML(tex: math.tex, mode: context.mode))
+        index = math.nextIndex
+        continue
+      }
+
+      if isRawHTMLBlockStart(trimmed) {
+        flushParagraph()
+        let rawBlock = collectRawHTMLBlock(from: lines, startingAt: index)
+        let html = renderRawHTML(rawBlock.html, baseURL: context.baseURL, mode: context.mode)
+        if !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          output.append(html)
+        }
+        index = rawBlock.nextIndex
+        continue
+      }
+
+      if let table = markdownTable(from: lines, startingAt: index, baseURL: context.baseURL, mode: context.mode) {
+        flushParagraph()
+        output.append(table.html)
+        index = table.nextIndex
+        continue
+      }
+
+      if let heading = markdownHeading(from: trimmed) {
+        flushParagraph()
+        output.append(headingHTML(level: heading.level, text: heading.text, context: context))
+        index += 1
+        continue
+      }
+
+      if trimmed.hasPrefix(">") {
+        flushParagraph()
+        let quote = collectBlockquote(from: lines, startingAt: index)
+        let inner = renderBlocks(quote.lines, context: context).joined(separator: "\n")
+        output.append("<blockquote>\(inner)</blockquote>")
+        index = quote.nextIndex
+        continue
+      }
+
+      if listItem(in: line) != nil {
+        flushParagraph()
+        let list = renderList(from: lines, startingAt: index, context: context)
+        output.append(list.html)
+        index = list.nextIndex
+        continue
+      }
+
+      paragraph.append(line)
+      index += 1
+    }
+
+    flushParagraph()
+    return output
+  }
+
+  /// Joins paragraph lines with spaces. A line ending in two spaces or a backslash ends with a hard break.
+  private static func paragraphHTML(_ lines: [String], context: RenderContext) -> String {
+    var parts: [String] = []
+    for (offset, rawLine) in lines.enumerated() {
+      var line = rawLine.replacingOccurrences(of: hardBreakMarker, with: "")
+      var breaksAfter = false
+      if offset < lines.count - 1 {
+        let trailingBackslashes = line.reversed().prefix(while: { $0 == "\\" }).count
+        if line.hasSuffix("  ") {
+          breaksAfter = true
+        } else if trailingBackslashes % 2 == 1 {
+          line.removeLast()
+          breaksAfter = true
+        }
+      }
+      let text = line.trimmingCharacters(in: .whitespaces)
+      parts.append(breaksAfter ? text + hardBreakMarker : text)
+    }
+    return context.inline(parts.joined(separator: " "), hardBreaks: true)
+  }
+
+  private static func headingHTML(level: Int, text: String, context: RenderContext) -> String {
+    let inner = context.inline(text)
+    let idAttribute = context.uniqueHeadingID(forHTML: inner)
+      .map { #" id="\#(escapeHTMLAttribute($0))""# } ?? ""
+    return "<h\(level)\(idAttribute)>\(inner)</h\(level)>"
+  }
+
+  /// The heading's visible text, lowercased, with spaces turned into hyphens and punctuation dropped.
+  private static func headingSlug(fromHTML html: String) -> String {
+    let text = html
+      .replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression)
+      .replacingOccurrences(of: #"&(#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z]+);"#, with: "", options: .regularExpression)
+      .lowercased()
+
+    var slug = ""
+    for scalar in text.unicodeScalars {
+      if scalar == " " {
+        slug += "-"
+      } else if scalar == "-" || scalar == "_" || CharacterSet.alphanumerics.contains(scalar) {
+        slug.unicodeScalars.append(scalar)
+      }
+    }
+    return slug
+  }
+
+  /// `---`, `***` or `___` (three or more, spaces allowed between them).
+  private static func isThematicBreak(_ trimmed: String) -> Bool {
+    guard let marker = trimmed.first, marker == "-" || marker == "*" || marker == "_" else { return false }
+    var count = 0
+    for character in trimmed {
+      if character == marker {
+        count += 1
+      } else if character != " " && character != "\t" {
+        return false
+      }
+    }
+    return count >= 3
+  }
+
+  /// A `===` or `---` line under paragraph text makes that text a level 1 or level 2 heading.
+  private static func setextHeadingLevel(_ trimmed: String) -> Int? {
+    guard
+      let marker = trimmed.first,
+      marker == "=" || marker == "-",
+      trimmed.allSatisfy({ $0 == marker })
+    else { return nil }
+    return marker == "=" ? 1 : 2
+  }
+
+  /// YAML front matter (`---` / `key: value` lines / `---`) at the very top is shown as a code block
+  /// instead of being read as a rule and a heading.
+  private static func yamlFrontMatter(in lines: [String]) -> (content: String, nextIndex: Int)? {
+    guard
+      lines.count >= 3,
+      lines[0].trimmingCharacters(in: .whitespaces) == "---",
+      firstMatch(in: lines[1], pattern: #"^[A-Za-z0-9_][A-Za-z0-9_ -]*:(\s|$)"#) != nil
+    else { return nil }
+
+    for index in 2..<lines.count {
+      let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+      if trimmed == "---" || trimmed == "..." {
+        return (lines[1..<index].joined(separator: "\n"), index + 1)
+      }
+    }
+    return nil
+  }
+
+  /// True when the line begins a block other than a paragraph, so it cannot continue one lazily.
+  private static func startsBlock(_ lines: [String], at index: Int) -> Bool {
+    let line = lines[index]
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    return codeFenceOpening(trimmed) != nil
+      || isThematicBreak(trimmed)
+      || markdownHeading(from: trimmed) != nil
+      || trimmed.hasPrefix(">")
+      || trimmed.hasPrefix("$$")
+      || isRawHTMLBlockStart(trimmed)
+      || listItem(in: line) != nil
+      || isTableStart(lines, at: index)
+  }
+
+  private static func isTableStart(_ lines: [String], at index: Int) -> Bool {
+    guard
+      index + 1 < lines.count,
+      let headers = tableCells(from: lines[index]),
+      let alignments = tableAlignments(from: lines[index + 1])
+    else { return false }
+    return !headers.isEmpty && headers.count == alignments.count
+  }
+
+  /// Consecutive `>` lines with the markers removed, plus plain lines that lazily continue the
+  /// quoted paragraph. Nested `>>` quotes are handled when the contents are rendered.
+  private static func collectBlockquote(from lines: [String], startingAt start: Int) -> (lines: [String], nextIndex: Int) {
+    var inner: [String] = []
+    var index = start
+
+    while index < lines.count {
+      let line = lines[index]
+      let content = line.drop(while: { $0 == " " || $0 == "\t" })
+      if content.first == ">" {
+        var rest = content.dropFirst()
+        if rest.first == " " || rest.first == "\t" {
+          rest = rest.dropFirst()
+        }
+        inner.append(String(rest))
+        index += 1
+        continue
+      }
+
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      guard
+        !trimmed.isEmpty,
+        let last = inner.last?.trimmingCharacters(in: .whitespaces),
+        !last.isEmpty,
+        markdownHeading(from: last) == nil,
+        setextHeadingLevel(trimmed) == nil,
+        !startsBlock(lines, at: index),
+        !hasOpenCodeFence(inner)
+      else { break }
+
+      inner.append(trimmed)
+      index += 1
+    }
+
+    return (inner, index)
+  }
+
+  // MARK: Lists
+
+  private struct ListItemMarker {
+    let indent: Int
+    let ordered: Bool
+    let number: Int
+    let contentIndent: Int
+    let content: String
+  }
+
+  /// `- item`, `* item`, `+ item`, `1. item` or `1) item`, with its indentation (tabs count to the next
+  /// multiple of four columns).
+  private static func listItem(in line: String) -> ListItemMarker? {
+    let expanded = expandingLeadingTabs(line)
+    guard
+      let match = firstMatch(in: expanded, pattern: #"^( *)([-*+]|\d{1,9}[.)])([ \t]+)(\S.*)$"#),
+      let indentText = match.capture(1, in: expanded),
+      let marker = match.capture(2, in: expanded),
+      let spacing = match.capture(3, in: expanded),
+      let content = match.capture(4, in: expanded),
+      !isThematicBreak(expanded.trimmingCharacters(in: .whitespaces))
+    else { return nil }
+
+    let ordered = marker.first?.isNumber == true
+    let number = ordered ? (Int(marker.dropLast()) ?? 1) : 1
+    let spaces = spacing.count > 4 ? 1 : spacing.count
+    return ListItemMarker(
+      indent: indentText.count,
+      ordered: ordered,
+      number: number,
+      contentIndent: indentText.count + marker.count + spaces,
+      content: content
+    )
+  }
+
+  private static func expandingLeadingTabs(_ line: String) -> String {
+    guard line.first == " " || line.first == "\t" else { return line }
+
+    var prefix = ""
+    var column = 0
+    var rest = Substring(line)
+    while let character = rest.first, character == " " || character == "\t" {
+      if character == "\t" {
+        let width = 4 - column % 4
+        prefix += String(repeating: " ", count: width)
+        column += width
+      } else {
+        prefix += " "
+        column += 1
+      }
+      rest = rest.dropFirst()
+    }
+    return prefix + rest
+  }
+
+  private static func leadingIndent(of line: String) -> Int {
+    expandingLeadingTabs(line).prefix(while: { $0 == " " }).count
+  }
+
+  private static func removingIndent(_ columns: Int, from line: String) -> String {
+    let expanded = expandingLeadingTabs(line)
+    let removable = min(columns, expanded.prefix(while: { $0 == " " }).count)
+    return String(expanded.dropFirst(removable))
+  }
+
+  /// One list starting at `start`. Lines indented two or more columns past the marker (or by a tab)
+  /// belong to the current item, which gives nested lists and multi-paragraph items. Blank lines
+  /// between items keep one list (and make it loose); an ordered list starts at its first number.
+  private static func renderList(
+    from lines: [String],
+    startingAt start: Int,
+    context: RenderContext
+  ) -> (html: String, nextIndex: Int) {
+    guard let first = listItem(in: lines[start]) else {
+      return (renderBlocks([lines[start]], context: context).joined(separator: "\n"), start + 1)
+    }
+
+    var items: [(marker: ListItemMarker, lines: [String])] = []
+    var currentMarker = first
+    var currentLines = [first.content]
+    var pendingBlankLines = 0
+    var isLoose = false
+    var index = start + 1
+
+    while index < lines.count {
+      let line = lines[index]
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+      if trimmed.isEmpty {
+        pendingBlankLines += 1
+        index += 1
+        continue
+      }
+
+      let indent = leadingIndent(of: line)
+      if indent >= currentMarker.indent + 2 {
+        if pendingBlankLines > 0 {
+          if !hasOpenCodeFence(currentLines) {
+            isLoose = true
+          }
+          currentLines.append(contentsOf: Array(repeating: "", count: pendingBlankLines))
+        }
+        currentLines.append(removingIndent(min(indent, currentMarker.contentIndent), from: line))
+        pendingBlankLines = 0
+        index += 1
+        continue
+      }
+
+      if let marker = listItem(in: line), marker.ordered == first.ordered {
+        if pendingBlankLines > 0 {
+          isLoose = true
+        }
+        items.append((marker: currentMarker, lines: currentLines))
+        currentMarker = marker
+        currentLines = [marker.content]
+        pendingBlankLines = 0
+        index += 1
+        continue
+      }
+
+      // A plain line straight after an item continues that item's text (lazy continuation).
+      if
+        pendingBlankLines == 0,
+        setextHeadingLevel(trimmed) == nil,
+        !startsBlock(lines, at: index),
+        !hasOpenCodeFence(currentLines)
+      {
+        currentLines.append(trimmed)
+        index += 1
+        continue
+      }
+
+      break
+    }
+    items.append((marker: currentMarker, lines: currentLines))
+
+    let tag = first.ordered ? "ol" : "ul"
+    let startAttribute = first.ordered && first.number != 1 ? #" start="\#(first.number)""# : ""
+    var html = ["<\(tag)\(startAttribute)>"]
+
+    for item in items {
+      var itemLines = item.lines
+      var checkbox: String?
+      if let task = taskListItem(from: itemLines[0]) {
+        checkbox = taskCheckbox(checked: task.checked, mode: context.mode)
+        itemLines[0] = task.text
+      }
+
+      var inner = renderBlocks(itemLines, context: context, tight: !isLoose).joined(separator: "\n")
+      if let checkbox {
+        if inner.hasPrefix("<p>") {
+          inner = "<p>\(checkbox) " + String(inner.dropFirst(3))
+        } else {
+          inner = "\(checkbox) \(inner)"
+        }
+        html.append("<li class=\"task-list-item\">\(inner)</li>")
+      } else {
+        html.append("<li>\(inner)</li>")
+      }
+    }
+
+    html.append("</\(tag)>")
+    return (html.joined(separator: "\n"), index)
   }
 
   private final class FootnoteIndex {
@@ -944,20 +1291,21 @@ struct MarkdownPreviewHTMLRenderer {
   ) -> (lines: [String], definitions: [String: String]) {
     var remaining: [String] = []
     var definitions: [String: String] = [:]
-    var inFence = false
+    var openFence: CodeFence?
     var currentID: String?
 
     for line in lines {
       let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
-      if trimmed.hasPrefix("```") {
-        inFence.toggle()
-        currentID = nil
+      if let fence = openFence {
+        if isCodeFenceClosing(line, for: fence) { openFence = nil }
         remaining.append(line)
         continue
       }
 
-      if inFence {
+      if let fence = codeFenceOpening(trimmed) {
+        openFence = fence
+        currentID = nil
         remaining.append(line)
         continue
       }
@@ -1045,23 +1393,60 @@ struct MarkdownPreviewHTMLRenderer {
       .replacingOccurrences(of: "\r", with: "\n")
       .components(separatedBy: "\n")
 
-    var isInFence = false
+    var openFence: CodeFence?
     for line in lines {
-      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard trimmed.hasPrefix("```") else { continue }
-
-      if isInFence {
-        isInFence = false
-      } else {
-        let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
-        if isMermaidLanguage(language) {
-          return true
-        }
-        isInFence = true
+      if let fence = openFence {
+        if isCodeFenceClosing(line, for: fence) { openFence = nil }
+        continue
       }
+
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard let fence = codeFenceOpening(trimmed) else { continue }
+      if isMermaidLanguage(fence.info) {
+        return true
+      }
+      openFence = fence
     }
 
     return false
+  }
+
+  // MARK: Code fences
+
+  private struct CodeFence {
+    let character: Character
+    let length: Int
+    let info: String
+  }
+
+  /// A fence of three or more backticks or tildes. A backtick fence's info string may not contain
+  /// a backtick, so a line such as ```` ```code``` ```` stays inline code.
+  private static func codeFenceOpening(_ trimmed: String) -> CodeFence? {
+    guard let first = trimmed.first, first == "`" || first == "~" else { return nil }
+    let length = trimmed.prefix(while: { $0 == first }).count
+    guard length >= 3 else { return nil }
+    let info = String(trimmed.dropFirst(length)).trimmingCharacters(in: .whitespaces)
+    if first == "`", info.contains("`") { return nil }
+    return CodeFence(character: first, length: length, info: info)
+  }
+
+  /// A fence closes only on a line of the same character that is at least as long as the opening.
+  private static func isCodeFenceClosing(_ line: String, for fence: CodeFence) -> Bool {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    let length = trimmed.prefix(while: { $0 == fence.character }).count
+    return length >= fence.length && length == trimmed.count
+  }
+
+  private static func hasOpenCodeFence(_ lines: [String]) -> Bool {
+    var openFence: CodeFence?
+    for line in lines {
+      if let fence = openFence {
+        if isCodeFenceClosing(line, for: fence) { openFence = nil }
+      } else {
+        openFence = codeFenceOpening(line.trimmingCharacters(in: .whitespacesAndNewlines))
+      }
+    }
+    return openFence != nil
   }
 
   private static func isMermaidLanguage(_ language: String) -> Bool {
@@ -1187,63 +1572,109 @@ struct MarkdownPreviewHTMLRenderer {
     mode.isRichText ? 220 : nil
   }
 
-  private static func isRawHTMLBlockStart(_ trimmed: String) -> Bool {
-    let lowercased = trimmed.lowercased()
-    return lowercased.hasPrefix("<p")
-      || lowercased.hasPrefix("<div")
-      || lowercased.hasPrefix("<section")
-      || lowercased.hasPrefix("<figure")
-      || lowercased.hasPrefix("<table")
-      || lowercased.hasPrefix("<details")
-      || lowercased.hasPrefix("<summary")
-      || lowercased.hasPrefix("<h1")
-      || lowercased.hasPrefix("<h2")
-      || lowercased.hasPrefix("<h3")
-      || lowercased.hasPrefix("<h4")
-      || lowercased.hasPrefix("<h5")
-      || lowercased.hasPrefix("<h6")
-      || lowercased.hasPrefix("<img")
-      || lowercased.hasPrefix("<a")
+  // MARK: Raw HTML blocks
+
+  /// Elements whose opening or closing tag at the start of a line begins a raw HTML block.
+  private static let rawHTMLBlockTags: Set<String> = [
+    "blockquote", "br", "caption", "center", "dd", "details", "div", "dl", "dt", "figcaption", "figure",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "li", "ol", "p", "picture", "pre", "section", "source",
+    "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
+  ]
+
+  /// Inline elements that READMEs commonly put on a line of their own.
+  private static let rawHTMLInlineStartTags: Set<String> = ["a", "abbr", "img"]
+
+  /// The tag a raw HTML block starts with. The name must match exactly (followed by whitespace,
+  /// `>`, `/` or the end of the line), so `<picture>` and `<pre>` are not read as `<p>`.
+  private static func rawHTMLStartTag(_ trimmed: String) -> (name: String, isClosing: Bool)? {
+    guard
+      trimmed.first == "<",
+      let match = firstMatch(in: trimmed, pattern: #"^<(/?)([a-zA-Z][a-zA-Z0-9]*)(?=[\s/>]|$)"#),
+      let name = match.capture(2, in: trimmed)?.lowercased()
+    else { return nil }
+
+    let isClosing = match.capture(1, in: trimmed) == "/"
+    if rawHTMLBlockTags.contains(name) || name == "a" || name == "abbr" {
+      return (name, isClosing)
+    }
+    if rawHTMLInlineStartTags.contains(name), !isClosing {
+      return (name, isClosing)
+    }
+    return nil
   }
 
-  private static func collectRawHTMLBlock(from lines: [String], startingAt index: Int) -> (html: String, nextIndex: Int) {
-    let start = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    let closingTag: String?
+  private static func isRawHTMLBlockStart(_ trimmed: String) -> Bool {
+    trimmed.hasPrefix("<!--") || rawHTMLStartTag(trimmed) != nil
+  }
 
-    if start.hasPrefix("<p") {
-      closingTag = "</p>"
-    } else if start.hasPrefix("<div") {
-      closingTag = "</div>"
-    } else if start.hasPrefix("<section") {
-      closingTag = "</section>"
-    } else if start.hasPrefix("<figure") {
-      closingTag = "</figure>"
-    } else if start.hasPrefix("<table") {
-      closingTag = "</table>"
-    } else if start.hasPrefix("<details") {
-      closingTag = "</details>"
-    } else if start.hasPrefix("<summary") {
-      closingTag = "</summary>"
-    } else {
-      closingTag = nil
+  /// The lines of a raw HTML block starting at `index`.
+  ///
+  /// - A comment runs to the line that closes it.
+  /// - A closing tag (`</div>`) or an empty element (`<img>`, `<hr>`) stands on its own line, so a
+  ///   stray closing tag never shows up as text.
+  /// - `<pre>` keeps blank lines and ends where its nesting closes.
+  /// - Any other element ends on the line where its own nesting closes (`<div>` inside `<div>` is
+  ///   counted) or at a blank line, so Markdown between `<div>` and `</div>` with blank lines
+  ///   around it still renders, as on GitHub.
+  private static func collectRawHTMLBlock(from lines: [String], startingAt index: Int) -> (html: String, nextIndex: Int) {
+    let first = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if first.hasPrefix("<!--") {
+      var cursor = index
+      var text = String(first.dropFirst(4))
+      while !text.contains("-->"), cursor + 1 < lines.count {
+        cursor += 1
+        text = lines[cursor]
+      }
+      return (lines[index...cursor].joined(separator: "\n"), cursor + 1)
     }
 
-    guard let closingTag, !start.contains(closingTag) else {
+    guard let start = rawHTMLStartTag(first) else {
       return (lines[index], index + 1)
     }
 
-    var block = [lines[index]]
-    var nextIndex = index + 1
-    while nextIndex < lines.count {
-      block.append(lines[nextIndex])
-      if lines[nextIndex].trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains(closingTag) {
-        nextIndex += 1
+    let standsAlone = start.isClosing || voidHTMLTags.contains(start.name)
+    let keepsBlankLines = start.name == "pre"
+    var block: [String] = []
+    var pendingText = ""
+    var depth = 0
+    var cursor = index
+
+    while cursor < lines.count {
+      let line = lines[cursor]
+      if cursor > index, !keepsBlankLines, line.trimmingCharacters(in: .whitespaces).isEmpty {
         break
       }
-      nextIndex += 1
+      block.append(line)
+      cursor += 1
+
+      // A tag whose attributes continue on the next line is counted once it is complete.
+      pendingText += pendingText.isEmpty ? line : "\n" + line
+      if hasUnterminatedTag(pendingText) { continue }
+      depth += tagBalance(of: start.name, in: pendingText)
+      pendingText = ""
+      if standsAlone || depth <= 0 { break }
     }
 
-    return (block.joined(separator: "\n"), nextIndex)
+    return (block.joined(separator: "\n"), cursor)
+  }
+
+  private static func hasUnterminatedTag(_ text: String) -> Bool {
+    text.range(of: #"<[a-zA-Z/][^>]*$"#, options: .regularExpression) != nil
+  }
+
+  /// Opening minus closing tags named `name` (self-closed `<name/>` tags are not counted).
+  private static func tagBalance(of name: String, in text: String) -> Int {
+    var balance = 0
+    for match in regularExpression(for: htmlTagPattern).matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+      guard (match.capture(2, in: text) ?? "").lowercased() == name else { continue }
+      if match.capture(1, in: text) == "/" {
+        balance -= 1
+      } else if !(match.capture(3, in: text) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("/") {
+        balance += 1
+      }
+    }
+    return balance
   }
 
   private static func renderRawHTML(_ rawHTML: String, baseURL: URL?, mode: RenderMode) -> String {
@@ -1306,7 +1737,10 @@ struct MarkdownPreviewHTMLRenderer {
   /// handlers, inline styles, and any link or image address that is not http, https,
   /// mailto, a relative path, or an embedded image.
   private static func sanitizeRawHTML(_ html: String) -> String {
-    let withoutActiveElements = removingActiveElements(from: html)
+    // Comments are dropped first (an unclosed one hides the rest of the block); whatever is left
+    // still goes through active-element removal and the allowlist below.
+    let withoutComments = html.replacingOccurrences(of: #"<!--[\s\S]*?(?:-->|$)"#, with: "", options: .regularExpression)
+    let withoutActiveElements = removingActiveElements(from: withoutComments)
     let regex = regularExpression(for: htmlTagPattern)
     var result = ""
     var cursor = withoutActiveElements.startIndex
@@ -1509,7 +1943,8 @@ struct MarkdownPreviewHTMLRenderer {
   }
 
   private static func markdownHeading(from trimmed: String) -> (level: Int, text: String)? {
-    let match = firstMatch(in: trimmed, pattern: #"^(#{1,6})\s+(.+)$"#)
+    // An optional closing run of #s (`## Title ##`) is not part of the text.
+    let match = firstMatch(in: trimmed, pattern: #"^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$"#)
     guard
       let match,
       let markerRange = Range(match.range(at: 1), in: trimmed),
@@ -1519,33 +1954,25 @@ struct MarkdownPreviewHTMLRenderer {
     return (trimmed[markerRange].count, String(trimmed[textRange]))
   }
 
-  private static func unorderedListItem(from trimmed: String) -> String? {
-    let match = firstMatch(in: trimmed, pattern: #"^[-*+]\s+(.+)$"#)
-    guard let match, let range = Range(match.range(at: 1), in: trimmed) else { return nil }
-    return String(trimmed[range])
-  }
-
-  private static func orderedListItem(from trimmed: String) -> String? {
-    let match = firstMatch(in: trimmed, pattern: #"^\d+[.)]\s+(.+)$"#)
-    guard let match, let range = Range(match.range(at: 1), in: trimmed) else { return nil }
-    return String(trimmed[range])
-  }
-
+  /// Inline Markdown to HTML. With `hardBreaks`, `hardBreakMarker` characters in `markdown` become
+  /// `<br>`; otherwise they are removed like any other private-use marker.
   private static func renderInline(
     _ markdown: String,
     baseURL: URL?,
     mode: RenderMode,
     imageWidth: Int? = nil,
-    footnotes: FootnoteIndex? = nil
+    footnotes: FootnoteIndex? = nil,
+    hardBreaks: Bool = false
   ) -> String {
     // The placeholder markers below are private-use characters; drop them from the input
     // so document text can never collide with a placeholder.
-    var html = escapeHTML(markdown)
+    let source = hardBreaks ? markdown : markdown.replacingOccurrences(of: hardBreakMarker, with: "")
+    var html = escapeHTML(source)
       .replacingOccurrences(of: "\u{E000}", with: "")
       .replacingOccurrences(of: "\u{E001}", with: "")
 
-    // Code spans and math are swapped for placeholders so the emphasis and
-    // link rules below cannot rewrite their contents.
+    // Code spans, math, escaped characters and generated tags are swapped for placeholders so
+    // the emphasis and link rules below cannot rewrite their contents.
     var protectedSegments: [String] = []
     var protectedPlain: [String] = []
     func protect(_ segment: String, plain: String) -> String {
@@ -1565,39 +1992,69 @@ struct MarkdownPreviewHTMLRenderer {
         else { return "" }
         return protectedPlain[index]
       }
-      return unescapeHTMLAttribute(plain)
+      return unescapeHTMLAttribute(plain).replacingOccurrences(of: hardBreakMarker, with: "")
     }
 
-    html = replacingMatches(in: html, pattern: #"`([^`]+)`"#) { match in
-      let inner = match.capture(1, in: html) ?? ""
+    func titleAttribute(_ title: String?) -> String {
+      guard let title else { return "" }
+      return #" title="\#(escapeHTMLAttribute(attributeText(title)))""#
+    }
+
+    // An escaped backtick (\`) does not open a code span.
+    html = replacingMatches(in: html, pattern: #"(?<!\\)`([^`]+)`"#) { match in
+      let inner = (match.capture(1, in: html) ?? "").replacingOccurrences(of: hardBreakMarker, with: "")
       return protect("<code>\(inner)</code>", plain: "`\(inner)`")
     }
     html = replacingMatches(in: html, pattern: #"(?<![\\$\d])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)"#) { match in
-      let tex = match.capture(1, in: html) ?? ""
+      let tex = (match.capture(1, in: html) ?? "").replacingOccurrences(of: hardBreakMarker, with: "")
       return protect(inlineMathHTML(escapedTeX: tex, mode: mode), plain: "$\(tex)$")
     }
-    html = replacingMatches(in: html, pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#) { match in
-      let alt = attributeText(match.capture(1, in: html) ?? "")
-      let source = attributeText(match.capture(2, in: html) ?? "")
+    // Backslash escapes: `\*`, `\_`, `\[`, `\#` and the rest of ASCII punctuation stand for the
+    // character itself. (`&`, `<` and `>` are already escaped to entities at this point.)
+    html = replacingMatches(in: html, pattern: ##"\\(&amp;|&lt;|&gt;|[!"#$%'()*+,\-./:;=?@\[\\\]^_`{|}~])"##) { match in
+      let character = match.capture(1, in: html) ?? ""
+      return protect(character, plain: character)
+    }
+
+    let sizeAttributes = imageAttributes(for: mode, width: imageWidth)
+    html = replacingInlineLinks(in: html, images: true) { altText, destination, title in
+      let alt = attributeText(altText)
+      let source = attributeText(destination)
       guard isSafeURL(source, schemes: ["http", "https"], allowImageData: true) else {
         return escapeHTMLAttribute(alt)
       }
       let previewSource = previewImageSource(for: source, baseURL: baseURL) ?? source
-      let sizeAttributes = imageAttributes(for: mode, width: imageWidth)
-      return #"<img src="\#(escapeHTMLAttribute(previewSource))" alt="\#(escapeHTMLAttribute(alt))"\#(sizeAttributes)>"#
+      return protect(
+        #"<img src="\#(escapeHTMLAttribute(previewSource))" alt="\#(escapeHTMLAttribute(alt))"\#(titleAttribute(title))\#(sizeAttributes)>"#,
+        plain: escapeHTML(alt)
+      )
     }
-    html = replacingMatches(in: html, pattern: #"\[([^\]]+)\]\(([^)]+)\)"#) { match in
-      let label = match.capture(1, in: html) ?? ""
-      let destination = attributeText(match.capture(2, in: html) ?? "")
-      guard isSafeURL(destination, schemes: ["http", "https", "mailto"], allowImageData: false) else {
+    html = replacingInlineLinks(in: html, images: false) { label, destination, title in
+      let href = attributeText(destination)
+      guard isSafeURL(href, schemes: ["http", "https", "mailto"], allowImageData: false) else {
         return label
       }
-      return #"<a href="\#(escapeHTMLAttribute(destination))">\#(label)</a>"#
+
+      var attributes = #" href="\#(escapeHTMLAttribute(href))""# + titleAttribute(title)
+      // Same-page links (`[Section](#section)`) scroll with the page script, wherever the page is opened from.
+      if href.hasPrefix("#"), href.count > 1 {
+        let fragment = String(href.dropFirst())
+        attributes += #" data-scroll="\#(escapeHTMLAttribute(fragment.removingPercentEncoding ?? fragment))""#
+      }
+      return protect("<a\(attributes)>", plain: "") + label + protect("</a>", plain: "")
     }
-    html = replacingMatches(in: html, pattern: #"\*\*([^*]+)\*\*"#) { match in
+
+    html = replacingMatches(in: html, pattern: #"\*\*(?!\s)([^*]+?)(?<!\s)\*\*"#) { match in
       "<strong>\(match.capture(1, in: html) ?? "")</strong>"
     }
-    html = replacingMatches(in: html, pattern: #"(?<!\*)\*([^*]+)\*(?!\*)"#) { match in
+    html = replacingMatches(in: html, pattern: #"(?<!\*)\*(?!\s)([^*]+?)(?<!\s)\*(?!\*)"#) { match in
+      "<em>\(match.capture(1, in: html) ?? "")</em>"
+    }
+    // Underscores emphasize only at word boundaries, so snake_case_names stay as they are.
+    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])__(?![\s_])(.+?)(?<![\s_])__(?![\p{L}\p{N}_])"#) { match in
+      "<strong>\(match.capture(1, in: html) ?? "")</strong>"
+    }
+    html = replacingMatches(in: html, pattern: #"(?<![\p{L}\p{N}_])_(?![\s_])(.+?)(?<![\s_])_(?![\p{L}\p{N}_])"#) { match in
       "<em>\(match.capture(1, in: html) ?? "")</em>"
     }
     html = replacingMatches(in: html, pattern: #"~~([^~]+)~~"#) { match in
@@ -1620,7 +2077,7 @@ struct MarkdownPreviewHTMLRenderer {
       }
     }
 
-    return replacingMatches(in: html, pattern: "\u{E000}(\\d+)\u{E001}") { match in
+    let restored = replacingMatches(in: html, pattern: "\u{E000}(\\d+)\u{E001}") { match in
       guard
         let text = match.capture(1, in: html),
         let index = Int(text),
@@ -1630,6 +2087,156 @@ struct MarkdownPreviewHTMLRenderer {
       }
       return protectedSegments[index]
     }
+    return hardBreaks ? restored.replacingOccurrences(of: hardBreakMarker, with: "<br>") : restored
+  }
+
+  /// Replaces each `[label](destination "title")` link (or `![alt](...)` image when `images`) found
+  /// by scanning, so destinations may hold balanced parentheses and an optional title.
+  private static func replacingInlineLinks(
+    in text: String,
+    images: Bool,
+    transform: (_ label: String, _ destination: String, _ title: String?) -> String
+  ) -> String {
+    let characters = Array(text)
+    var result = ""
+    var index = 0
+
+    while index < characters.count {
+      let opens = images
+        ? characters[index] == "!" && index + 1 < characters.count && characters[index + 1] == "["
+        : characters[index] == "["
+      if opens {
+        let labelStart = index + (images ? 2 : 1)
+        if
+          let labelEnd = closingBracketIndex(in: characters, from: labelStart),
+          labelEnd + 1 < characters.count,
+          characters[labelEnd + 1] == "(",
+          let tail = linkDestinationAndTitle(in: characters, from: labelEnd + 2)
+        {
+          let label = String(characters[labelStart..<labelEnd])
+          // `[^1]` is a footnote reference, not a link label.
+          if images || (!label.isEmpty && !label.hasPrefix("^")) {
+            result += transform(label, tail.destination, tail.title)
+            index = tail.end
+            continue
+          }
+        }
+      }
+      result.append(characters[index])
+      index += 1
+    }
+
+    return result
+  }
+
+  private static func closingBracketIndex(in characters: [Character], from start: Int) -> Int? {
+    var depth = 1
+    var index = start
+    while index < characters.count {
+      if characters[index] == "[" {
+        depth += 1
+      } else if characters[index] == "]" {
+        depth -= 1
+        if depth == 0 { return index }
+      }
+      index += 1
+    }
+    return nil
+  }
+
+  /// Reads `destination "title")` starting just after the `(`. A destination is either `<...>` or
+  /// runs to whitespace with balanced parentheses; the title may be in `"`, `'` or `()`. When that
+  /// shape does not fit, everything up to the matching `)` is the destination, so local file names
+  /// with spaces keep working.
+  private static func linkDestinationAndTitle(
+    in characters: [Character],
+    from start: Int
+  ) -> (destination: String, title: String?, end: Int)? {
+    let count = characters.count
+
+    func isSpace(_ character: Character) -> Bool {
+      character == " " || character == "\t" || character == "\n"
+    }
+
+    func hasSequence(_ sequence: String, at position: Int) -> Bool {
+      var cursor = position
+      for character in sequence {
+        guard cursor < count, characters[cursor] == character else { return false }
+        cursor += 1
+      }
+      return true
+    }
+
+    func wholeDestination() -> (destination: String, title: String?, end: Int)? {
+      var depth = 0
+      var cursor = start
+      while cursor < count {
+        if characters[cursor] == "(" {
+          depth += 1
+        } else if characters[cursor] == ")" {
+          if depth == 0 {
+            let destination = String(characters[start..<cursor]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if destination.isEmpty { return nil }
+            return (destination: destination, title: nil, end: cursor + 1)
+          }
+          depth -= 1
+        }
+        cursor += 1
+      }
+      return nil
+    }
+
+    var index = start
+    while index < count, isSpace(characters[index]) { index += 1 }
+
+    var destination = ""
+    var pointy: (open: String, close: String)?
+    if hasSequence("<", at: index) {
+      pointy = ("<", ">")
+    } else if hasSequence("&lt;", at: index) {
+      pointy = ("&lt;", "&gt;")
+    }
+    if let pointy {
+      var cursor = index + pointy.open.count
+      while cursor < count, !hasSequence(pointy.close, at: cursor), characters[cursor] != "\n" { cursor += 1 }
+      guard cursor < count, hasSequence(pointy.close, at: cursor) else { return wholeDestination() }
+      destination = String(characters[(index + pointy.open.count)..<cursor])
+      index = cursor + pointy.close.count
+    } else {
+      let destinationStart = index
+      var depth = 0
+      while index < count {
+        let character = characters[index]
+        if isSpace(character) { break }
+        if character == "(" {
+          depth += 1
+        } else if character == ")" {
+          if depth == 0 { break }
+          depth -= 1
+        }
+        index += 1
+      }
+      destination = String(characters[destinationStart..<index])
+    }
+
+    let destinationEnd = index
+    while index < count, isSpace(characters[index]) { index += 1 }
+
+    var title: String?
+    if index > destinationEnd, index < count, ["\"", "'", "("].contains(characters[index]) {
+      let closing: Character = characters[index] == "(" ? ")" : characters[index]
+      var cursor = index + 1
+      while cursor < count, characters[cursor] != closing { cursor += 1 }
+      guard cursor < count else { return wholeDestination() }
+      title = String(characters[(index + 1)..<cursor])
+      index = cursor + 1
+      while index < count, isSpace(characters[index]) { index += 1 }
+    }
+
+    guard index < count, characters[index] == ")", !destination.isEmpty else {
+      return wholeDestination()
+    }
+    return (destination, title, index + 1)
   }
 
   private static func inlineMathHTML(escapedTeX: String, mode: RenderMode) -> String {
@@ -1677,7 +2284,7 @@ struct MarkdownPreviewHTMLRenderer {
     return nil
   }
 
-  private static let highlightAssets: String? = {
+  private static let highlightSources: (script: String, light: String, dark: String)? = {
     func text(_ name: String, _ ext: String) -> String? {
       let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Highlight")
         ?? Bundle.main.url(forResource: name, withExtension: ext)
@@ -1692,14 +2299,22 @@ struct MarkdownPreviewHTMLRenderer {
       return nil
     }
 
+    return (script, light, dark)
+  }()
+
+  /// Code highlighting. Only the live preview carries the dark theme; other modes are always light.
+  private static func highlightAssets(for mode: RenderMode) -> String? {
+    guard let sources = highlightSources else { return nil }
+    let darkTheme = mode.isPreview ? "@media (prefers-color-scheme: dark) { \(sources.dark) }" : ""
+
     return """
       <style>
-        \(light)
-        @media (prefers-color-scheme: dark) { \(dark) }
+        \(sources.light)
+        \(darkTheme)
         .codeblock pre code.hljs { background: transparent; padding: 0; }
       </style>
       <script nonce="\(scriptNonce)">
-        \(script)
+        \(sources.script)
         (function () {
           if (!window.hljs) { return; }
           document.querySelectorAll('.codeblock pre code[class*="language-"]').forEach(function (element) {
@@ -1710,7 +2325,7 @@ struct MarkdownPreviewHTMLRenderer {
         })();
       </script>
     """
-  }()
+  }
 
   private static let mathAssets: String? = {
     func text(_ name: String, _ ext: String) -> String? {
@@ -1779,10 +2394,11 @@ struct MarkdownPreviewHTMLRenderer {
       }
     }
 
-    let markdownImageRegex = regularExpression(for: #"!\[[^\]]*\]\(([^)]+)\)"#)
-    for match in markdownImageRegex.matches(in: markdown, range: NSRange(markdown.startIndex..., in: markdown)) {
-      guard let source = match.capture(1, in: markdown) else { continue }
-      appendImageURL(for: source)
+    // Same reading of `![alt](destination "title")` as the renderer, so titles and parentheses
+    // in file names are handled alike.
+    _ = replacingInlineLinks(in: markdown, images: true) { _, destination, _ in
+      appendImageURL(for: destination)
+      return ""
     }
 
     let rawHTMLImageRegex = regularExpression(for: #"<img\b[^>]*\bsrc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)[^>]*>"#)
@@ -1833,17 +2449,17 @@ struct MarkdownPreviewHTMLRenderer {
     guard !pathWithoutQuery.isEmpty else { return nil }
 
     let decodedPath = pathWithoutQuery.removingPercentEncoding ?? pathWithoutQuery
+    // Only images are ever embedded, so other files are never read or asked about.
+    guard imageMIMEType(for: (decodedPath as NSString).pathExtension) != nil else { return nil }
+
+    // Paths relative to the document, including ones that climb out of its folder
+    // (`../assets/logo.png`). Whether the file may be read is decided by the sandbox and the
+    // folders the user has granted (MarkdownFolderAccessStore); an unreadable one makes the
+    // preview ask for its folder.
     let rootURL = baseURL.standardizedFileURL.resolvingSymlinksInPath()
-    let fileURL = URL(fileURLWithPath: decodedPath, relativeTo: rootURL)
+    return URL(fileURLWithPath: decodedPath, relativeTo: rootURL)
       .standardizedFileURL
       .resolvingSymlinksInPath()
-    let rootPath = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
-
-    guard fileURL.path.hasPrefix(rootPath) else {
-      return nil
-    }
-
-    return fileURL
   }
 
   private static func trimmingMarkdownDestinationDelimiters(from source: String) -> String {
@@ -1911,12 +2527,22 @@ struct MarkdownPreviewHTMLRenderer {
     return result
   }
 
+  /// Compiled patterns, reused across renders (the preview renders on every edit).
+  private static let regularExpressionCache = NSCache<NSString, NSRegularExpression>()
+
   private static func regularExpression(
     for pattern: String,
     options: NSRegularExpression.Options = [.caseInsensitive]
   ) -> NSRegularExpression {
+    let key = "\(options.rawValue)|\(pattern)" as NSString
+    if let cached = regularExpressionCache.object(forKey: key) {
+      return cached
+    }
+
     do {
-      return try NSRegularExpression(pattern: pattern, options: options)
+      let expression = try NSRegularExpression(pattern: pattern, options: options)
+      regularExpressionCache.setObject(expression, forKey: key)
+      return expression
     } catch {
       preconditionFailure("Invalid regular expression: \(pattern)")
     }
@@ -1929,6 +2555,29 @@ private extension NSTextCheckingResult {
       return nil
     }
     return String(text[range])
+  }
+}
+
+/// What the preview's look depends on: the app's Appearance setting and whether the web view is
+/// currently drawn light or dark (in System mode the second one follows macOS).
+enum MarkdownPreviewAppearance {
+  static func isDark(_ appearance: NSAppearance) -> Bool {
+    appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+  }
+
+  static func token(setting: String, appearance: NSAppearance) -> String {
+    "\(setting)|\(isDark(appearance) ? "dark" : "light")"
+  }
+}
+
+/// Reports when its effective appearance changes (for example macOS switching to dark mode while the
+/// app follows the system), so the preview can be drawn again with the matching diagram theme.
+private final class PreviewWebView: WKWebView {
+  var effectiveAppearanceDidChange: ((WKWebView) -> Void)?
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    effectiveAppearanceDidChange?(self)
   }
 }
 
@@ -1946,10 +2595,13 @@ private struct MarkdownWebPreview: NSViewRepresentable {
     let configuration = WKWebViewConfiguration()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
-    let webView = WKWebView(frame: .zero, configuration: configuration)
+    let webView = PreviewWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
     webView.allowsMagnification = true
     webView.underPageBackgroundColor = .clear
+    webView.effectiveAppearanceDidChange = { [weak coordinator = context.coordinator] webView in
+      coordinator?.effectiveAppearanceDidChange(in: webView)
+    }
     context.coordinator.webView = webView
     loadPreview(in: webView, coordinator: context.coordinator)
     return webView
@@ -1962,17 +2614,16 @@ private struct MarkdownWebPreview: NSViewRepresentable {
   private func loadPreview(in webView: WKWebView, coordinator: Coordinator) {
     requestFolderAccessIfNeeded(in: webView, coordinator: coordinator)
 
+    coordinator.appearanceSetting = appearanceToken
     let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: baseURL)
     guard
       html != coordinator.currentHTML
-        || appearanceToken != coordinator.currentAppearanceToken
+        || coordinator.appearanceToken(for: webView) != coordinator.currentAppearanceToken
     else {
       return
     }
 
-    coordinator.currentHTML = html
-    coordinator.currentAppearanceToken = appearanceToken
-    webView.loadHTMLString(html, baseURL: baseURL)
+    coordinator.load(html, baseURL: baseURL, in: webView)
   }
 
   private func requestFolderAccessIfNeeded(in webView: WKWebView, coordinator: Coordinator) {
@@ -2016,13 +2667,65 @@ private struct MarkdownWebPreview: NSViewRepresentable {
   final class Coordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
     var currentHTML = ""
+    var currentBaseURL: URL?
     var currentAppearanceToken = ""
+    var appearanceSetting = ""
     var folderAccessTask: Task<Void, Never>?
     var requestedFolderAccessPaths = Set<String>()
     var accessibleFolderPaths = Set<String>()
 
+    private var hasLoadedPage = false
+    private var loadGeneration = 0
+    /// Where the reader was before the page was replaced; restored once the new page has loaded.
+    private var pendingScrollY: Double?
+
     deinit {
       folderAccessTask?.cancel()
+    }
+
+    func appearanceToken(for webView: WKWebView) -> String {
+      MarkdownPreviewAppearance.token(setting: appearanceSetting, appearance: webView.effectiveAppearance)
+    }
+
+    /// Loads `html`, keeping the reader's scroll position from the page being replaced.
+    func load(_ html: String, baseURL: URL?, in webView: WKWebView) {
+      currentHTML = html
+      currentBaseURL = baseURL
+      currentAppearanceToken = appearanceToken(for: webView)
+      loadGeneration += 1
+      let generation = loadGeneration
+
+      // Nothing to keep yet, or a position is already waiting for the page still loading.
+      guard hasLoadedPage, pendingScrollY == nil else {
+        hasLoadedPage = true
+        webView.loadHTMLString(html, baseURL: baseURL)
+        return
+      }
+
+      webView.evaluateJavaScript("window.scrollY") { [weak self, weak webView] result, _ in
+        guard let self, let webView else { return }
+        if self.pendingScrollY == nil {
+          self.pendingScrollY = (result as? NSNumber)?.doubleValue ?? 0
+        }
+        // A newer page was requested meanwhile; it does the loading.
+        guard generation == self.loadGeneration else { return }
+        webView.loadHTMLString(self.currentHTML, baseURL: self.currentBaseURL)
+      }
+    }
+
+    /// The light/dark look changed (System mode following macOS, or the Appearance menu): draw the
+    /// page again so Mermaid diagrams pick the matching theme.
+    func effectiveAppearanceDidChange(in webView: WKWebView) {
+      guard hasLoadedPage, !currentHTML.isEmpty else { return }
+      guard appearanceToken(for: webView) != currentAppearanceToken else { return }
+      load(currentHTML, baseURL: currentBaseURL, in: webView)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      guard let scrollY = pendingScrollY else { return }
+      pendingScrollY = nil
+      guard scrollY > 0, scrollY.isFinite else { return }
+      webView.evaluateJavaScript("window.scrollTo(0, \(scrollY));", completionHandler: nil)
     }
 
     func webView(

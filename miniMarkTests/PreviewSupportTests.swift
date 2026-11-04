@@ -1,3 +1,4 @@
+import AppKit
 import MarkdownUI
 import XCTest
 @testable import miniMark
@@ -247,9 +248,27 @@ final class PreviewSupportTests: XCTestCase {
     XCTAssertTrue(html.contains("mermaid.initialize"))
     XCTAssertTrue(html.contains("securityLevel: 'strict'"))
     XCTAssertTrue(html.contains("querySelectorAll('.mermaid')"))
-    // Diagrams are redrawn when the appearance changes, so System mode follows macOS light and dark.
-    XCTAssertTrue(html.contains("addEventListener('change'"))
+    // The preview picks the diagram theme from the current appearance when the page loads; the web
+    // view reloads the page when its appearance changes (see MarkdownPreviewAppearance), so the
+    // page itself does not listen for changes.
+    XCTAssertTrue(html.contains("matchMedia('(prefers-color-scheme: dark)')"))
+    XCTAssertFalse(html.contains("addEventListener('change'"))
     XCTAssertFalse(html.contains(#"class="language-mermaid""#))
+  }
+
+  func testPreviewAppearanceTokenFollowsEffectiveLightOrDark() throws {
+    let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
+    let light = try XCTUnwrap(NSAppearance(named: .aqua))
+
+    XCTAssertTrue(MarkdownPreviewAppearance.isDark(dark))
+    XCTAssertFalse(MarkdownPreviewAppearance.isDark(light))
+    // In System mode the setting stays the same while macOS switches; the token must still change.
+    XCTAssertNotEqual(
+      MarkdownPreviewAppearance.token(setting: "System", appearance: dark),
+      MarkdownPreviewAppearance.token(setting: "System", appearance: light)
+    )
+    XCTAssertEqual(MarkdownPreviewAppearance.token(setting: "System", appearance: dark), "System|dark")
+    XCTAssertEqual(MarkdownPreviewAppearance.token(setting: "Light", appearance: light), "Light|light")
   }
 
   func testPreviewRendererOnlyTreatsExactMermaidLanguageAsDiagram() {
@@ -599,5 +618,328 @@ final class PreviewSupportTests: XCTestCase {
     let form = MarkdownPreviewHTMLRenderer.htmlDocument(for: "<div><form/>must disappear</form><p>kept</p></div>", baseURL: nil)
     XCTAssertFalse(form.contains("must disappear"))
     XCTAssertTrue(form.contains("<p>kept</p>"))
+  }
+
+  // MARK: Raw HTML blocks
+
+  func testPictureHeaderDoesNotSwallowTheRestOfTheReadme() {
+    let multiLine = """
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+      <img src="docs/logo-light.png" alt="Logo" width="120">
+    </picture>
+
+    # miniMark
+
+    Some **bold** text.
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: multiLine, baseURL: nil)
+
+    XCTAssertTrue(html.contains("<picture>"))
+    XCTAssertTrue(html.contains(#"<source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">"#))
+    XCTAssertTrue(html.contains(#"<h1 id="minimark">miniMark</h1>"#))
+    XCTAssertTrue(html.contains("<p>Some <strong>bold</strong> text.</p>"))
+    XCTAssertFalse(html.contains("&lt;picture"))
+    XCTAssertFalse(html.contains("&lt;/picture"))
+    XCTAssertFalse(html.contains("# miniMark"))
+
+    let oneLine = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<picture><source srcset=\"dark.png\" media=\"(prefers-color-scheme: dark)\"><img src=\"light.png\" alt=\"Logo\"></picture>\n\nAfter *text*.",
+      baseURL: nil
+    )
+    XCTAssertTrue(oneLine.contains("</picture>"))
+    XCTAssertTrue(oneLine.contains("<p>After <em>text</em>.</p>"))
+  }
+
+  func testPreBlockEndsAtItsClosingTagAndKeepsBlankLines() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<pre>\nline one\n\nline two\n</pre>\n\nAfter *pre*.",
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains("<pre>\nline one\n\nline two\n</pre>"))
+    XCTAssertTrue(html.contains("<p>After <em>pre</em>.</p>"))
+    XCTAssertFalse(html.contains("&lt;/pre"))
+  }
+
+  func testNestedDivsAndStrayClosingTagsNeverShowAsText() {
+    let nested = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<div align=\"center\">\n<div>\ninner\n</div>\n</div>\n\nAfter",
+      baseURL: nil
+    )
+    XCTAssertTrue(nested.contains("<div align=\"center\">\n<div>\ninner\n</div>\n</div>"))
+    XCTAssertTrue(nested.contains("<p>After</p>"))
+    XCTAssertFalse(nested.contains("&lt;/div"))
+
+    let stray = MarkdownPreviewHTMLRenderer.htmlDocument(for: "Text\n</div>\n\nMore", baseURL: nil)
+    XCTAssertFalse(stray.contains("&lt;/div"))
+    XCTAssertTrue(stray.contains("<p>Text</p>"))
+    XCTAssertTrue(stray.contains("<p>More</p>"))
+  }
+
+  func testMarkdownBetweenBlockTagsAndBlankLinesStillRenders() {
+    let centered = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<div align=\"center\">\n\n# Title\n\nSome *text*\n\n</div>",
+      baseURL: nil
+    )
+    XCTAssertTrue(centered.contains(#"<div align="center">"#))
+    XCTAssertTrue(centered.contains(#"<h1 id="title">Title</h1>"#))
+    XCTAssertTrue(centered.contains("<p>Some <em>text</em></p>"))
+    XCTAssertFalse(centered.contains("&lt;div"))
+    XCTAssertFalse(centered.contains("&lt;/div"))
+
+    let details = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<details>\n<summary>More</summary>\n\n- one\n- two\n\n</details>",
+      baseURL: nil
+    )
+    XCTAssertTrue(details.contains("<summary>More</summary>"))
+    XCTAssertTrue(details.contains("<li>one</li>"))
+    XCTAssertTrue(details.contains("</details>"))
+    XCTAssertFalse(details.contains("&lt;/details"))
+  }
+
+  func testHTMLCommentsAreHidden() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "<!-- hiddenmarkerone -->\n\nVisible\n\n<!--\nhiddenmarkertwo\n-->\nAfter\n\n<div>kept<!-- hiddenmarkerthree --></div>",
+      baseURL: nil
+    )
+
+    XCTAssertFalse(html.contains("hiddenmarker"))
+    XCTAssertFalse(html.contains("&lt;!--"))
+    XCTAssertTrue(html.contains("<p>Visible</p>"))
+    XCTAssertTrue(html.contains("<p>After</p>"))
+    XCTAssertTrue(html.contains("<div>kept</div>"))
+  }
+
+  // MARK: Markdown blocks
+
+  func testThematicBreaksAndSetextHeadings() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "Intro\n\n---\n\n***\n\n___\n\n* * *\n\nTitle\n=====\n\nSub\n---",
+      baseURL: nil
+    )
+
+    XCTAssertEqual(html.components(separatedBy: "<hr>").count - 1, 4)
+    XCTAssertTrue(html.contains("<p>Intro</p>"))
+    XCTAssertTrue(html.contains(#"<h1 id="title">Title</h1>"#))
+    XCTAssertTrue(html.contains(#"<h2 id="sub">Sub</h2>"#))
+    XCTAssertFalse(html.contains("<li>"))
+  }
+
+  func testYAMLFrontMatterIsShownAsCodeNotAsRuleAndHeading() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "---\ntitle: Notes\ntags: [a, b]\n---\n\n# Notes",
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains(#"class="language-yaml""#))
+    XCTAssertTrue(html.contains("title: Notes\ntags: [a, b]"))
+    XCTAssertFalse(html.contains("<hr>"))
+    XCTAssertTrue(html.contains(#"<h1 id="notes">Notes</h1>"#))
+  }
+
+  func testNestedListsByIndentation() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "- a\n  - b\n    - c\n- d", baseURL: nil)
+
+    XCTAssertTrue(html.contains("<ul>\n<li>a\n<ul>\n<li>b\n<ul>\n<li>c</li>\n</ul></li>\n</ul></li>\n<li>d</li>\n</ul>"))
+
+    let tabbed = MarkdownPreviewHTMLRenderer.htmlDocument(for: "1. one\n\t- sub\n2. two", baseURL: nil)
+    XCTAssertTrue(tabbed.contains("<ol>\n<li>one\n<ul>\n<li>sub</li>\n</ul></li>\n<li>two</li>\n</ol>"))
+  }
+
+  func testOrderedListKeepsOneListAcrossBlankLinesAndHonoursStartNumber() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "3. three\n\n4. four\n\n5. five\n\nAfter", baseURL: nil)
+
+    XCTAssertTrue(html.contains(#"<ol start="3">"# + "\n<li><p>three</p></li>\n<li><p>four</p></li>\n<li><p>five</p></li>\n</ol>"))
+    XCTAssertEqual(html.components(separatedBy: "<ol").count - 1, 1)
+    XCTAssertTrue(html.contains("<p>After</p>"))
+  }
+
+  func testLooseTaskListKeepsCheckboxesAndListItemsContinueLazily() {
+    let loose = MarkdownPreviewHTMLRenderer.htmlDocument(for: "- [x] done\n\n- [ ] open", baseURL: nil)
+    XCTAssertTrue(loose.contains(#"<li class="task-list-item"><p><input type="checkbox" checked disabled> done</p></li>"#))
+    XCTAssertTrue(loose.contains(#"<li class="task-list-item"><p><input type="checkbox" disabled> open</p></li>"#))
+
+    let lazy = MarkdownPreviewHTMLRenderer.htmlDocument(for: "- first\ncontinued", baseURL: nil)
+    XCTAssertTrue(lazy.contains("<li>first continued</li>"))
+  }
+
+  func testConsecutiveQuoteLinesFormOneBlockquoteWithNesting() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "> one\n> two\n>\n> > nested\n\nAfter", baseURL: nil)
+
+    XCTAssertTrue(html.contains("<blockquote><p>one two</p>\n<blockquote><p>nested</p></blockquote></blockquote>"))
+    XCTAssertEqual(html.components(separatedBy: "<blockquote>").count - 1, 2)
+    XCTAssertTrue(html.contains("<p>After</p>"))
+
+    let lazy = MarkdownPreviewHTMLRenderer.htmlDocument(for: "> quoted\nlazy line", baseURL: nil)
+    XCTAssertTrue(lazy.contains("<blockquote><p>quoted lazy line</p></blockquote>"))
+  }
+
+  func testFencesCloseOnlyOnAMatchingOrLongerFence() {
+    let markdown = """
+    ~~~
+    code with ``` inside
+    ~~~
+
+    ````md
+    ```js
+    let x = 1
+    ```
+    ````
+    """
+
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil)
+
+    XCTAssertEqual(html.components(separatedBy: #"<div class="codeblock">"#).count - 1, 2)
+    XCTAssertTrue(html.contains("code with ``` inside"))
+    XCTAssertTrue(html.contains("```js\nlet x = 1\n```"))
+    XCTAssertTrue(html.contains(#"class="language-md""#))
+
+    let tildeMermaid = MarkdownPreviewHTMLRenderer.htmlDocument(for: "~~~mermaid\ngraph TD\nA-->B\n~~~", baseURL: nil)
+    XCTAssertTrue(tildeMermaid.contains(#"<pre class="mermaid">graph TD"#))
+  }
+
+  // MARK: Inline Markdown
+
+  func testUnderscoreEmphasisRespectsWordBoundaries() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "_em_ and __strong__ and snake_case_word and _snake_case_ here",
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains("<em>em</em>"))
+    XCTAssertTrue(html.contains("<strong>strong</strong>"))
+    XCTAssertTrue(html.contains("snake_case_word"))
+    XCTAssertTrue(html.contains("<em>snake_case</em>"))
+  }
+
+  func testHardLineBreaks() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: "line one  \nline two\\\nline three", baseURL: nil)
+
+    XCTAssertTrue(html.contains("<p>line one<br> line two<br> line three</p>"))
+  }
+
+  func testBackslashEscapesShowTheCharacter() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: #"\*not em\* and \_not em\_ and \[not a link\](x) and \`not code\`"# + "\n\n" + ##"\# not a heading"##,
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains("*not em*"))
+    XCTAssertTrue(html.contains("_not em_"))
+    XCTAssertTrue(html.contains("[not a link](x)"))
+    XCTAssertTrue(html.contains("`not code`"))
+    XCTAssertTrue(html.contains("<p># not a heading</p>"))
+    XCTAssertFalse(html.contains("<em>"))
+    XCTAssertFalse(html.contains("<code>"))
+    XCTAssertFalse(html.contains("<a href"))
+    XCTAssertFalse(html.contains("<h1"))
+  }
+
+  func testLinkAndImageTitlesAndParenthesesInDestinations() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: #"[Docs](https://example.com/docs "The \"docs\" <page>") ![Logo](logo.png 'Our logo') [Wiki](https://en.wikipedia.org/wiki/Swift_(programming_language)). [U](https://example.com/_a_/b)"#,
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains(#"<a href="https://example.com/docs" title="The &quot;docs&quot; &lt;page&gt;">Docs</a>"#))
+    XCTAssertTrue(html.contains(#"<img src="logo.png" alt="Logo" title="Our logo""#))
+    XCTAssertTrue(html.contains(#"<a href="https://en.wikipedia.org/wiki/Swift_(programming_language)">Wiki</a>."#))
+    XCTAssertTrue(html.contains(#"<a href="https://example.com/_a_/b">U</a>"#))
+  }
+
+  func testHeadingsGetUniqueAnchorsThatSamePageLinksScrollTo() {
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(
+      for: "# Section\n\n## Section\n\n### Hello, World!\n\nSee [the section](#section).",
+      baseURL: nil
+    )
+
+    XCTAssertTrue(html.contains(#"<h1 id="section">Section</h1>"#))
+    XCTAssertTrue(html.contains(#"<h2 id="section-1">Section</h2>"#))
+    XCTAssertTrue(html.contains(#"<h3 id="hello-world">Hello, World!</h3>"#))
+    XCTAssertTrue(html.contains(##"<a href="#section" data-scroll="section">the section</a>"##))
+    XCTAssertTrue(html.contains("a[data-scroll]"))
+  }
+
+  // MARK: Export, print and rich text
+
+  func testExportPrintAndRichTextAreAlwaysLight() {
+    let markdown = """
+    # Doc
+
+    ```swift
+    let value = 1
+    ```
+
+    ```mermaid
+    graph TD
+    A-->B
+    ```
+    """
+
+    for mode in [MarkdownPreviewHTMLRenderer.RenderMode.export, .print, .richText] {
+      let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil, mode: mode)
+      XCTAssertFalse(html.contains("(prefers-color-scheme: dark)"), "\(mode) carries dark styles")
+      XCTAssertTrue(html.contains("color-scheme: light;"), "\(mode) is not light")
+      XCTAssertFalse(html.contains("Theme: GitHub Dark"), "\(mode) carries the dark code theme")
+      if mode != .richText, html.contains("mermaid.initialize") {
+        XCTAssertTrue(html.contains("var isDark = false;"), "\(mode) draws dark diagrams")
+      }
+    }
+
+    let preview = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: nil, mode: .preview)
+    XCTAssertTrue(preview.contains("(prefers-color-scheme: dark)"))
+    XCTAssertTrue(preview.contains("color-scheme: light dark;"))
+  }
+
+  func testExportedFilesDoNotCarryTheLocalFolderPath() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("miniMarkPreviewSupportTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let markdown = "# Title\n\n[Other](other.md)"
+
+    for mode in [MarkdownPreviewHTMLRenderer.RenderMode.export, .richText] {
+      let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: directory, mode: mode)
+      XCTAssertFalse(html.contains("<base"), "\(mode) has a base element")
+      XCTAssertFalse(html.contains(directory.path), "\(mode) contains the folder path")
+      XCTAssertTrue(html.contains(#"href="other.md""#))
+    }
+
+    for mode in [MarkdownPreviewHTMLRenderer.RenderMode.preview, .print] {
+      let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: directory, mode: mode)
+      XCTAssertTrue(html.contains("<base href="), "\(mode) lost its base element")
+    }
+  }
+
+  // MARK: Local images
+
+  func testParentRelativeImagesAreEmbeddedWhenReadable() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("miniMarkPreviewSupportTests-\(UUID().uuidString)", isDirectory: true)
+    let docs = root.appendingPathComponent("docs", isDirectory: true)
+    let assets = root.appendingPathComponent("assets", isDirectory: true)
+    try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let pngData = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+    try pngData.write(to: assets.appendingPathComponent("logo.png"))
+
+    let markdown = "![Logo](../assets/logo.png \"Logo\")\n\n<p><img src=\"../assets/logo.png\" alt=\"Logo\"></p>"
+    let html = MarkdownPreviewHTMLRenderer.htmlDocument(for: markdown, baseURL: docs)
+
+    XCTAssertEqual(html.components(separatedBy: pngData.base64EncodedString()).count - 1, 2)
+    XCTAssertFalse(html.contains(#"src="../assets/logo.png""#))
+
+    let urls = MarkdownPreviewHTMLRenderer.localImageURLs(
+      for: markdown + "\n\n![Notes](../notes.txt)\n\n![Abs](/tmp/abs.png)",
+      baseURL: docs
+    )
+    XCTAssertEqual(urls.count, 1)
+    XCTAssertEqual(urls.first?.lastPathComponent, "logo.png")
+    XCTAssertEqual(urls.first?.deletingLastPathComponent().lastPathComponent, "assets")
   }
 }
