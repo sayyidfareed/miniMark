@@ -51,7 +51,7 @@ MADE TO STAY OUT OF THE WAY
 
 Requires macOS 14 or later.
 
-## Notes for App Review (1229 / 4000 bytes)
+## Notes for App Review (1362 / 4000 bytes)
 
 miniMark is a document-based Markdown editor. No account or login is needed.
 

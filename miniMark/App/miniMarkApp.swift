@@ -75,8 +75,8 @@ struct AppearanceCommands: Commands {
 struct HelpCommands: Commands {
   var body: some Commands {
     CommandGroup(replacing: .help) {
-      Link("miniMark Support", destination: URL(string: "https://ideius.com/minimark/support")!)
-      Link("Privacy Policy", destination: URL(string: "https://ideius.com/minimark/privacy")!)
+      Link("miniMark Support", destination: URL(string: "https://ideius.com/minimark/support/")!)
+      Link("Privacy Policy", destination: URL(string: "https://ideius.com/minimark/privacy/")!)
     }
   }
 }
